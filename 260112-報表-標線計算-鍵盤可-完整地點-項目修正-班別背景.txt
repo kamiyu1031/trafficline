@@ -8,6 +8,8 @@
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- 引入 Lucide Icons -->
     <script src="https://unpkg.com/lucide@latest"></script>
+    <!-- 引入 html2pdf.js 用於輸出 PDF -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
     <style>
         /* 禁止選取文字，避免按鈕操作時誤選 */
         .no-select {
@@ -62,7 +64,7 @@
             box-shadow: 0 4px 6px -1px rgba(59, 130, 246, 0.1), 0 2px 4px -1px rgba(59, 130, 246, 0.06);
         }
 
-        /* 鍵盤焦點樣式 (Keyboard Focus) */
+        /* 鍵盤焦點樣式 */
         .keyboard-focused {
             outline: 3px solid #f59e0b; /* Amber-500 */
             outline-offset: 2px;
@@ -85,14 +87,55 @@
         .mode-btn-inactive:hover {
             background-color: rgba(255,255,255,0.5);
         }
-        /* Hide scrollbar for Chrome, Safari and Opera */
+        /* 隱藏捲軸 */
         .scrollbar-hide::-webkit-scrollbar {
             display: none;
         }
-        /* Hide scrollbar for IE, Edge and Firefox */
         .scrollbar-hide {
             -ms-overflow-style: none;  /* IE and Edge */
             scrollbar-width: none;  /* Firefox */
+        }
+        
+        /* PDF 輸出專用樣式 - 預設隱藏 */
+        #pdf-template {
+            display: none;
+            width: 100%;
+            max-width: 210mm; /* A4 width constraint */
+            margin: 0 auto;
+            padding: 10mm;
+            background: white;
+            color: black;
+            font-family: "Microsoft JhengHei", "PingFang TC", "Heiti TC", sans-serif;
+        }
+        
+        /* 當進入 PDF 模式時，此 Class 會被加到 Body */
+        body.pdf-mode {
+            background-color: white !important;
+            overflow: visible !important; /* 允許滾動以便截圖 */
+        }
+        body.pdf-mode #start-page,
+        body.pdf-mode #main-app, 
+        body.pdf-mode #modal-custom,
+        body.pdf-mode #toast {
+            display: none !important; /* 強制隱藏所有 UI */
+        }
+        body.pdf-mode #pdf-template {
+            display: block !important; /* 只顯示 PDF 模板 */
+        }
+
+        .pdf-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+        }
+        .pdf-section {
+            break-inside: avoid;
+            margin-bottom: 15px;
+        }
+        .pdf-header-item {
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+            margin-bottom: 10px;
         }
     </style>
 </head>
@@ -120,19 +163,16 @@
 
         <!-- 滾動內容區 -->
         <div class="flex-1 overflow-y-auto p-4 space-y-6" id="form-container">
-            
-            <!-- 日期 (維持 Input 但美化) -->
+            <!-- 日期 -->
             <section>
                 <h3 class="text-xs font-bold text-slate-500 mb-2 flex items-center gap-1">
                     <i data-lucide="calendar" class="w-3 h-3"></i> 施工日期
                 </h3>
                 <input type="date" id="form-date" class="w-full p-3 bg-white border-2 border-slate-200 rounded-xl focus:border-blue-500 outline-none text-slate-700 font-mono font-bold shadow-sm nav-item" data-section="date">
             </section>
-
-            <!-- JS 動態生成其他區塊 (人員, 班別, 狀態, 業主, 地點, 車輛) -->
+            <!-- JS 動態生成其他區塊 -->
             <div id="dynamic-form-sections" class="space-y-6"></div>
-
-            <!-- 底部留白給按鈕 -->
+            <!-- 底部留白 -->
             <div class="h-20"></div>
         </div>
 
@@ -148,7 +188,7 @@
     <!-- ==================== 主程式頁面 (Main App) ==================== -->
     <div id="main-app" class="page-hidden flex-col h-full w-full overflow-hidden">
         
-        <!-- 頂部標題與總計 (動態顯示專案資訊) -->
+        <!-- 頂部標題與總計 -->
         <header class="bg-white p-2 shadow-sm border-b border-slate-200 z-20 flex justify-between items-center shrink-0 h-14">
             <div class="flex items-center gap-1.5 overflow-hidden flex-1 min-w-0 mr-2">
                 <!-- 返回按鈕 -->
@@ -156,9 +196,7 @@
                     <i data-lucide="arrow-left" class="w-5 h-5"></i>
                 </button>
                 <div class="flex flex-col min-w-0">
-                    <!-- 這裡會動態插入業主與地點 -->
                     <h1 id="project-title" class="font-bold text-sm leading-tight text-slate-800 truncate">標線統計</h1>
-                    <!-- 這裡會動態插入日期與人員 -->
                     <p id="project-subtitle" class="text-[10px] text-slate-500 truncate">請先填寫前置資料</p>
                 </div>
             </div>
@@ -173,20 +211,16 @@
         <!-- 主內容區 -->
         <main class="flex-1 flex flex-col md:flex-row overflow-hidden relative">
             
-            <!-- 左側：操作面板 (類型選擇 + 鍵盤) -->
+            <!-- 左側：操作面板 -->
             <div class="flex-1 flex flex-col md:w-3/5 h-full overflow-hidden">
-                
-                <!-- 1. 類型選擇區 -->
+                <!-- 類型選擇區 -->
                 <div class="flex-1 p-1.5 overflow-y-auto bg-slate-50 relative" id="type-scroll-container">
-                    
-                    <!-- 標題與工具列 -->
                     <div class="flex justify-between items-center sticky top-0 bg-slate-50 py-1 z-20 mb-1 shadow-sm px-1 flex-wrap gap-y-1">
                         <div class="flex items-center gap-2 max-w-full">
                             <h2 class="text-xs font-bold text-slate-500 flex items-center gap-1 shrink-0">
                                 <i data-lucide="grid" class="w-3 h-3"></i> 1. 類型
                             </h2>
-                            
-                            <!-- 新增：模式切換按鈕群組 -->
+                            <!-- 模式切換按鈕群組 -->
                             <div class="flex items-center bg-slate-200 rounded p-0.5 shrink-0 overflow-x-auto max-w-[220px] sm:max-w-none scrollbar-hide">
                                 <button onclick="setPrefixMode('mark')" id="btn-mode-mark" class="px-2 py-0.5 text-[10px] rounded transition-all mode-btn-active whitespace-nowrap">標線</button>
                                 <button onclick="setPrefixMode('primer')" id="btn-mode-primer" class="px-2 py-0.5 text-[10px] rounded transition-all mode-btn-inactive whitespace-nowrap">底油</button>
@@ -196,43 +230,32 @@
                                 <button onclick="setPrefixMode('cold')" id="btn-mode-cold" class="px-2 py-0.5 text-[10px] rounded transition-all mode-btn-inactive whitespace-nowrap">冷塑</button>
                             </div>
                         </div>
-
                         <div class="flex gap-2 ml-auto">
-                            <!-- 這裡的聲音開關同步全域狀態 -->
                             <button onclick="toggleSound()" id="sound-btn-main" class="text-[10px] text-slate-400 flex items-center gap-1">
                                 <i data-lucide="volume-2" class="w-3 h-3"></i>
                             </button>
                             <button onclick="resetTypes()" class="text-[10px] text-blue-500 underline px-2">恢復預設</button>
                         </div>
                     </div>
-                    
-                    <div id="type-list-container" class="pb-10 space-y-2">
-                        <!-- JS 將在此渲染分類與按鈕 -->
-                    </div>
+                    <div id="type-list-container" class="pb-10 space-y-2"></div>
                 </div>
 
-                <!-- 2. 輸入與鍵盤區 -->
+                <!-- 輸入與鍵盤區 -->
                 <div class="bg-white p-2 border-t border-slate-200 shadow-[0_-4px_6px_-1px_rgba(0,0,0,0.05)] z-20 shrink-0">
-                    
-                    <!-- 顯示螢幕 -->
                     <div class="bg-slate-100 rounded-lg p-1.5 mb-1.5 text-right border border-slate-200 flex flex-col justify-center h-12 relative group">
                         <div class="absolute top-1 left-2 flex items-center gap-2">
-                            <!-- 修改：顯示目前模式 -->
                             <div id="screen-prefix-badge" class="hidden text-[9px] bg-slate-800 text-white px-1 py-0.5 rounded font-bold"></div>
                             <div id="screen-type-name" class="text-[10px] text-slate-500 font-bold truncate max-w-[120px]">請選擇</div>
                             <button onclick="editCurrentFactors()" class="bg-slate-200 hover:bg-slate-300 text-slate-600 rounded px-1 py-0.5 text-[9px] flex items-center gap-0.5 transition-colors" title="修改規格">
-                                <i data-lucide="settings-2" class="w-3 h-3"></i>
-                                修改
+                                <i data-lucide="settings-2" class="w-3 h-3"></i> 修改
                             </button>
                         </div>
-
                         <div class="flex items-baseline justify-end gap-1 px-1">
                             <span id="screen-value" class="text-xl font-mono font-bold text-slate-800 leading-none">0</span>
                             <span id="screen-unit" class="text-[10px] text-slate-400">m</span>
                         </div>
                         <div id="screen-calc-preview" class="text-[9px] text-blue-500 h-3 truncate px-1 font-mono"></div>
                     </div>
-
                     <!-- 數字鍵盤 -->
                     <div class="grid grid-cols-4 gap-1 select-none pb-1">
                         <button class="key-btn bg-white border-b-2 border-slate-200 h-10 text-sm" onclick="inputKey('7')">7</button>
@@ -248,7 +271,6 @@
                         <button class="key-btn bg-white border-b-2 border-slate-200 h-10 text-sm" onclick="inputKey('1')">1</button>
                         <button class="key-btn bg-white border-b-2 border-slate-200 h-10 text-sm" onclick="inputKey('2')">2</button>
                         <button class="key-btn bg-white border-b-2 border-slate-200 h-10 text-sm" onclick="inputKey('3')">3</button>
-                        <!-- 確認按鈕 (支援 Enter 鍵) -->
                         <button class="key-btn row-span-2 bg-blue-600 text-white rounded-lg shadow-md active:bg-blue-700 flex flex-col items-center justify-center gap-0.5" onclick="submitInput()">
                             <span class="text-sm font-bold">確認</span>
                             <span class="text-[9px] font-normal opacity-80">(Enter)</span>
@@ -268,39 +290,67 @@
                     </h3>
                     <button onclick="clearAll()" class="text-[10px] text-red-500 border border-red-200 px-1.5 py-0.5 rounded hover:bg-red-50">清空</button>
                 </div>
-                
                 <div id="history-list" class="flex-1 overflow-y-auto p-1.5 space-y-1 bg-slate-100">
                     <div class="text-center text-slate-400 mt-4 text-xs">暫無資料</div>
                 </div>
-
-                <div class="p-2 bg-white border-t border-slate-200 shrink-0 grid grid-cols-2 gap-2">
-                    <button onclick="copyReport()" class="py-2 bg-slate-800 text-white rounded-lg font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-1 text-xs">
-                        <i data-lucide="clipboard-copy" class="w-3 h-3"></i>
-                        報表 (P)
-                    </button>
-                    <button onclick="copyLineItems()" class="py-2 bg-blue-600 text-white rounded-lg font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-1 text-xs">
-                        <i data-lucide="file-text" class="w-3 h-3"></i>
-                        逐條 (O)
+                <div class="p-2 bg-white border-t border-slate-200 shrink-0 space-y-2">
+                    <div class="grid grid-cols-2 gap-2">
+                        <button onclick="copyReport()" class="py-2 bg-slate-800 text-white rounded-lg font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-1 text-xs">
+                            <i data-lucide="clipboard-copy" class="w-3 h-3"></i> 報表 (P)
+                        </button>
+                        <button onclick="copyLineItems()" class="py-2 bg-blue-600 text-white rounded-lg font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-1 text-xs">
+                            <i data-lucide="file-text" class="w-3 h-3"></i> 逐條 (O)
+                        </button>
+                    </div>
+                    <button onclick="exportPDF()" class="w-full py-3 bg-red-600 text-white rounded-lg font-bold shadow-lg active:scale-95 transition-all flex items-center justify-center gap-2 text-sm">
+                        <i data-lucide="file-down" class="w-4 h-4"></i> 輸出 PDF (L)
                     </button>
                 </div>
             </div>
-
         </main>
     </div>
 
-    <!-- 自訂項目 Modal -->
+    <!-- PDF 模板 (隱藏) -->
+    <div id="pdf-template">
+        <h1 class="text-2xl font-bold mb-4 text-center border-b-2 border-black pb-2">道路標線施工日報表</h1>
+        <div class="grid grid-cols-2 gap-4 mb-4 text-sm font-bold">
+            <div class="pdf-header-item">日期: <span id="pdf-date"></span></div>
+            <div class="pdf-header-item">業主: <span id="pdf-owner"></span></div>
+            <div class="pdf-header-item">人員: <span id="pdf-user"></span></div>
+            <div class="pdf-header-item">班別: <span id="pdf-shift"></span></div>
+            <div class="pdf-header-item">狀態: <span id="pdf-status"></span></div>
+            <div class="pdf-header-item">地點: <span id="pdf-location"></span></div>
+            <div class="pdf-header-item col-span-2">車輛: <span id="pdf-car"></span></div>
+        </div>
+        <div class="pdf-grid">
+            <div class="bg-slate-50 p-4 rounded border border-slate-200">
+                <h2 class="text-lg font-bold mb-3 border-b border-slate-300 pb-1 text-blue-800">統計報表</h2>
+                <div id="pdf-left-col" class="text-xs space-y-4 font-mono leading-relaxed"></div>
+                <div class="mt-4 pt-2 border-t-2 border-black font-bold text-sm text-right">
+                    總計: <span id="pdf-total-area"></span> m²
+                </div>
+            </div>
+            <div class="bg-white p-4 rounded border border-slate-200">
+                <div class="flex justify-between items-center mb-3 border-b border-slate-300 pb-1">
+                    <h2 class="text-lg font-bold text-slate-700">輸入紀錄</h2>
+                    <span class="text-xs bg-slate-200 px-2 py-1 rounded-full text-slate-600" id="pdf-count-badge"></span>
+                </div>
+                <ol id="pdf-right-col" class="text-xs list-decimal pl-5 space-y-1 text-slate-600 font-mono"></ol>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal 與 Toast -->
     <div id="modal-custom" class="fixed inset-0 bg-black/50 z-50 hidden flex items-center justify-center p-4">
         <div class="bg-white rounded-2xl w-full max-w-sm p-5 shadow-2xl transform transition-all scale-100">
             <h3 class="text-lg font-bold text-slate-800 mb-4 flex items-center gap-2">
                 <i data-lucide="plus-circle" class="text-blue-600"></i> 新增自訂項目
             </h3>
-            
             <div class="space-y-3">
                 <div>
                     <label class="block text-xs font-bold text-slate-500 mb-1">項目名稱</label>
                     <input type="text" id="custom-name" placeholder="例如：特殊圖案" class="w-full p-2 border border-slate-300 rounded-lg focus:outline-none focus:border-blue-500">
                 </div>
-                
                 <div class="grid grid-cols-2 gap-3">
                     <div>
                         <label class="block text-xs font-bold text-slate-500 mb-1">計算方式</label>
@@ -311,19 +361,14 @@
                         </select>
                     </div>
                     <div>
-                        <label class="block text-xs font-bold text-slate-500 mb-1" id="custom-value-label">係數 (可輸入算式)</label>
+                        <label class="block text-xs font-bold text-slate-500 mb-1" id="custom-value-label">係數</label>
                         <input type="text" id="custom-factors" placeholder="例如: 1*0.1" class="w-full p-2 border border-slate-300 rounded-lg">
-                        <div class="text-[10px] text-slate-400 mt-1">
-                            計次項目係數請填 1
-                        </div>
                     </div>
                 </div>
-                
                 <div class="text-xs text-slate-400 bg-slate-100 p-2 rounded">
                     預覽公式：<span id="custom-preview" class="font-mono">1m * ? = ?m²</span>
                 </div>
             </div>
-
             <div class="flex gap-2 mt-6">
                 <button onclick="closeModal()" class="flex-1 py-2 text-slate-500 font-bold bg-slate-100 rounded-lg hover:bg-slate-200">取消</button>
                 <button onclick="saveCustomType()" class="flex-1 py-2 text-white font-bold bg-blue-600 rounded-lg hover:bg-blue-700 shadow-md">新增</button>
@@ -331,11 +376,10 @@
         </div>
     </div>
 
-    <!-- 複製成功提示 -->
     <div id="toast" class="fixed top-1/2 left-1/2 transform -translate-x-1/2 -translate-y-1/2 bg-black/80 text-white px-6 py-4 rounded-xl shadow-2xl z-50 hidden flex-col items-center">
         <i data-lucide="check-circle" class="w-8 h-8 text-green-400 mb-2"></i>
-        <div class="font-bold text-lg">複製成功！</div>
-        <div class="text-sm text-gray-300 mt-1">您可以直接貼上至 Line 或 Excel</div>
+        <div class="font-bold text-lg">操作成功！</div>
+        <div class="text-sm text-gray-300 mt-1" id="toast-msg"></div>
     </div>
 
     <script>
@@ -356,9 +400,7 @@
 
         function toggleSound() {
             isSoundEnabled = !isSoundEnabled;
-            const btn1 = document.getElementById('sound-btn-start');
-            const btn2 = document.getElementById('sound-btn-main');
-            const btns = [btn1, btn2];
+            const btns = [document.getElementById('sound-btn-start'), document.getElementById('sound-btn-main')];
             btns.forEach(btn => {
                 if(!btn) return;
                 if (isSoundEnabled) {
@@ -434,7 +476,6 @@
             if (!isSoundEnabled || !audioCtx) return;
             initAudioContext();
             const t = audioCtx.currentTime;
-            // Reverse of Start Sound: C5 -> G4 -> E4 -> C4
             const notes = [523.25, 392.00, 329.63, 261.63];
             notes.forEach((freq, i) => {
                 const osc = audioCtx.createOscillator();
@@ -483,35 +524,19 @@
             location: [
                 {
                     label: "臺北市（12個區）",
-                    options: [
-                        "中正區", "大同區", "中山區", "萬華區", "信義區", "松山區", 
-                        "大安區", "南港區", "北投區", "內湖區", "士林區", "文山區"
-                    ]
+                    options: ["中正區", "大同區", "中山區", "萬華區", "信義區", "松山區", "大安區", "南港區", "北投區", "內湖區", "士林區", "文山區"]
                 },
                 {
                     label: "新北市（29個區）",
-                    options: [
-                        "板橋區", "新莊區", "泰山區", "林口區", "淡水區", "金山區", 
-                        "八里區", "萬里區", "石門區", "三芝區", "瑞芳區", "汐止區", 
-                        "平溪區", "貢寮區", "雙溪區", "深坑區", "石碇區", "新店區", 
-                        "坪林區", "烏來區", "中和區", "永和區", "土城區", "三峽區", 
-                        "樹林區", "鶯歌區", "三重區", "蘆洲區", "五股區"
-                    ]
+                    options: ["板橋區", "新莊區", "泰山區", "林口區", "淡水區", "金山區", "八里區", "萬里區", "石門區", "三芝區", "瑞芳區", "汐止區", "平溪區", "貢寮區", "雙溪區", "深坑區", "石碇區", "新店區", "坪林區", "烏來區", "中和區", "永和區", "土城區", "三峽區", "樹林區", "鶯歌區", "三重區", "蘆洲區", "五股區"]
                 },
                 {
                     label: "桃園市（13個區）",
-                    options: [
-                        "桃園市", "中壢區", "平鎮區", "龍潭區", "楊梅區", "新屋區", 
-                        "觀音區", "桃園區", "龜山區", "八德區", "大溪區", "復興區", 
-                        "大園區", "蘆竹區"
-                    ]
+                    options: ["桃園市", "中壢區", "平鎮區", "龍潭區", "楊梅區", "新屋區", "觀音區", "桃園區", "龜山區", "八德區", "大溪區", "復興區", "大園區", "蘆竹區"]
                 },
                 {
                     label: "基隆市（7個區）",
-                    options: [
-                        "仁愛區", "中正區", "信義區", "中山區", "安樂區", "暖暖區", 
-                        "七堵區"
-                    ]
+                    options: ["仁愛區", "中正區", "信義區", "中山區", "安樂區", "暖暖區", "七堵區"]
                 },
                 {
                     label: "其他",
@@ -521,15 +546,7 @@
             car: ["A車", "B車", "C車", "D車", "X車", "Y車", "Z車", "其他"]
         };
 
-        const FORM_TITLES = {
-            user: '填表人員',
-            shift: '班別',
-            status: '狀態',
-            owner: '業主',
-            location: '施工地點',
-            car: '車輛'
-        };
-
+        const FORM_TITLES = { user: '填表人員', shift: '班別', status: '狀態', owner: '業主', location: '施工地點', car: '車輛' };
         let formData = { date: '', user: '', shift: '', status: '', owner: '', location: '', car: '' };
         let keyboardFocusEl = null;
 
@@ -560,16 +577,14 @@
                         const groupGrid = document.createElement('div');
                         groupGrid.className = "grid grid-cols-3 sm:grid-cols-4 gap-2";
                         group.options.forEach(opt => {
-                            const btn = createOptionBtn(key, opt);
-                            groupGrid.appendChild(btn);
+                            groupGrid.appendChild(createOptionBtn(key, opt));
                         });
                         groupDiv.appendChild(groupGrid);
                         grid.appendChild(groupDiv);
                     });
                 } else {
                     FORM_OPTIONS[key].forEach(opt => {
-                        const btn = createOptionBtn(key, opt);
-                        grid.appendChild(btn);
+                        grid.appendChild(createOptionBtn(key, opt));
                     });
                 }
                 section.appendChild(grid);
@@ -595,8 +610,6 @@
             const allBtns = container.querySelectorAll(`button[data-category="${category}"]`);
             allBtns.forEach(b => b.classList.remove('selected'));
             btnElement.classList.add('selected');
-            
-            // Set focus to the selected button
             btnElement.focus();
             keyboardFocusEl = btnElement;
             updateFocusVisual();
@@ -629,14 +642,11 @@
             document.getElementById('main-app').classList.add('page-hidden');
             document.getElementById('start-page').classList.remove('page-hidden');
             document.getElementById('start-page').classList.add('page-visible');
-            
             keyboardFocusEl = null;
         }
 
         function handleKeyboardNav(e) {
             const keys = ['w', 'a', 's', 'd', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'];
-            
-            // 空白鍵處理: 用於選取
             if (e.key === ' ') {
                 e.preventDefault();
                 if (keyboardFocusEl) {
@@ -645,17 +655,12 @@
                 }
                 return;
             }
-            
             if (!keys.includes(e.key)) return;
 
             const isStartPage = document.getElementById('start-page').classList.contains('page-visible');
-            
-            let navItems = [];
-            if (isStartPage) {
-                navItems = Array.from(document.querySelectorAll('#start-page .nav-item, #start-page input, #start-page button.option-btn'));
-            } else {
-                navItems = Array.from(document.querySelectorAll('#type-list-container button'));
-            }
+            let navItems = isStartPage ? 
+                Array.from(document.querySelectorAll('#start-page .nav-item, #start-page input, #start-page button.option-btn')) : 
+                Array.from(document.querySelectorAll('#type-list-container button'));
             
             navItems = navItems.filter(el => el.offsetParent !== null && !el.disabled);
             if (navItems.length === 0) return;
@@ -669,7 +674,6 @@
             const currentRect = keyboardFocusEl.getBoundingClientRect();
             const cx = currentRect.left + currentRect.width / 2;
             const cy = currentRect.top + currentRect.height / 2;
-
             let bestCandidate = null;
             let minDist = Infinity;
 
@@ -829,7 +833,6 @@
         let inputValue = '';
         let historyData = [];
         
-        // 新增：模式狀態 (預設 'mark')
         let currentPrefixMode = 'mark'; 
         const PREFIX_MAP = {
             'mark': '',
@@ -907,7 +910,6 @@
         }
 
         function init() {
-            // Fix: Wait for DOM loaded
             if (document.readyState === 'loading') {
                 document.addEventListener('DOMContentLoaded', onDomReady);
             } else {
@@ -927,43 +929,18 @@
                     handleKeyboardNav(e);
                     return;
                 }
-                
-                // Allow direct numpad input
                 const isInput = document.activeElement?.tagName === 'INPUT' || document.activeElement?.tagName === 'TEXTAREA';
                 if (!isInput) {
                     if(e.key >= '0' && e.key <= '9') { inputKey(e.key); return; }
                     if(e.key === '.') { inputKey('.'); return; }
                     if(e.key === 'Backspace') { inputKey('DEL'); return; }
                     if(e.key === 'Escape') { inputKey('AC'); return; }
-                    
-                    // Enter to submit
-                    if(e.key === 'Enter') {
-                        e.preventDefault();
-                        submitInput();
-                        return;
-                    }
-                    
-                    // Space to select (part of keyboard nav)
-                    if(e.key === ' ') {
-                        e.preventDefault();
-                        if(keyboardFocusEl) keyboardFocusEl.click();
-                        return;
-                    }
-
-                    // Hotkey P for Copy Report
-                    if(e.key.toLowerCase() === 'p') {
-                        e.preventDefault();
-                        copyReport();
-                        return;
-                    }
-                    // Hotkey O for Copy Line Items (逐條輸出)
-                    if(e.key.toLowerCase() === 'o') {
-                        e.preventDefault();
-                        copyLineItems();
-                        return;
-                    }
+                    if(e.key === 'Enter') { e.preventDefault(); submitInput(); return; }
+                    if(e.key === ' ') { e.preventDefault(); if(keyboardFocusEl) keyboardFocusEl.click(); return; }
+                    if(e.key.toLowerCase() === 'p') { e.preventDefault(); copyReport(); return; }
+                    if(e.key.toLowerCase() === 'o') { e.preventDefault(); copyLineItems(); return; }
+                    if(e.key.toLowerCase() === 'l') { e.preventDefault(); exportPDF(); return; }
                 }
-                
                 handleKeyboardNav(e);
             });
             
@@ -972,13 +949,8 @@
             document.getElementById('custom-type').addEventListener('change', updateCustomPreview);
         }
 
-        // ----------------------------------------
-        // 新增：設定模式邏輯
-        // ----------------------------------------
         function setPrefixMode(mode) {
             currentPrefixMode = mode;
-            
-            // 更新按鈕外觀
             ['mark', 'primer', 'remove', 'black', 'color', 'cold'].forEach(m => {
                 const btn = document.getElementById(`btn-mode-${m}`);
                 if (m === mode) {
@@ -989,8 +961,6 @@
                     btn.classList.remove('mode-btn-active');
                 }
             });
-
-            // 更新螢幕上的提示 (可選)
             const badge = document.getElementById('screen-prefix-badge');
             const prefixText = PREFIX_MAP[mode];
             if (prefixText) {
@@ -1029,29 +999,21 @@
                             formulaText = `統計數量 (不計面積)`;
                         }
 
-                        // Add type-btn class for keyboard nav targeting
                         btn.className = `
                             type-btn relative p-1 rounded-lg border-2 text-left transition-all btn-active flex flex-col justify-between h-14 shadow-sm bg-white
-                            ${isSelected 
-                                ? 'border-blue-500 ring-2 ring-blue-200 bg-white z-10' 
-                                : `${type.color} border-transparent hover:opacity-90`}
+                            ${isSelected ? 'border-blue-500 ring-2 ring-blue-200 bg-white z-10' : `${type.color} border-transparent hover:opacity-90`}
                         `;
-                        // Store ID for recovering focus
                         btn.dataset.id = type.id;
-                        
                         btn.onclick = () => {
                             selectType(type.id);
                             speak(type.name);
-                            // Set focus to this button to help keyboard navigation
                             btn.focus();
                             keyboardFocusEl = btn;
                             updateFocusVisual();
                         };
                         btn.innerHTML = `
                             <div class="font-bold text-xs leading-tight break-words line-clamp-2">${type.name}</div>
-                            <div class="text-[9px] opacity-70 mt-0.5 font-mono bg-white/50 inline-block px-1 rounded break-all leading-tight truncate w-full">
-                                ${formulaText}
-                            </div>
+                            <div class="text-[9px] opacity-70 mt-0.5 font-mono bg-white/50 inline-block px-1 rounded break-all leading-tight truncate w-full">${formulaText}</div>
                             ${isSelected ? '<div class="absolute top-0.5 right-0.5 w-1.5 h-1.5 bg-blue-500 rounded-full animate-pulse"></div>' : ''}
                         `;
                         grid.appendChild(btn);
@@ -1066,16 +1028,11 @@
             const addBtn = document.createElement('button');
             addBtn.className = "w-full p-2 rounded-lg border-2 border-dashed border-slate-300 text-slate-400 flex items-center justify-center gap-2 hover:bg-slate-50 hover:text-slate-600 transition-colors h-12";
             addBtn.onclick = openModal;
-            addBtn.innerHTML = `
-                <i data-lucide="plus" class="w-4 h-4"></i>
-                <span class="text-xs font-bold">新增自訂項目 (將歸類於 G 區)</span>
-            `;
+            addBtn.innerHTML = `<i data-lucide="plus" class="w-4 h-4"></i><span class="text-xs font-bold">新增自訂項目 (將歸類於 G 區)</span>`;
             addSection.appendChild(addBtn);
             container.appendChild(addSection);
-            
             lucide.createIcons();
             
-            // Try to restore focus if possible
             if (selectedTypeId) {
                 const activeBtn = container.querySelector(`button[data-id="${selectedTypeId}"]`);
                 if (activeBtn) {
@@ -1085,22 +1042,12 @@
             }
         }
 
-        function selectType(id) {
-            selectedTypeId = id;
-            inputValue = '';
-            renderTypes();
-            updateScreen();
-        }
+        function selectType(id) { selectedTypeId = id; inputValue = ''; renderTypes(); updateScreen(); }
 
         function editCurrentFactors() {
             const type = getSelectedType();
             if(!type) return;
-            
-            if (type.category === 'H' || type.type === 'item') {
-                alert('此項目為純數量統計，無需設定面積係數。');
-                return;
-            }
-
+            if (type.category === 'H' || type.type === 'item') { alert('此項目為純數量統計，無需設定面積係數。'); return; }
             const currentStr = type.factors.map(f => fmtNum(f)).join('*'); 
             const newStr = prompt(`修改 "${type.name}" 的計算參數 (例如: 長度*寬度):\n目前設定: ${currentStr}`, currentStr);
             if(newStr !== null && newStr !== currentStr) {
@@ -1110,26 +1057,15 @@
                     localStorage.setItem('marking_types', JSON.stringify(types));
                     renderTypes();
                     updateScreen();
-                } else {
-                    alert('格式錯誤，請輸入數字或算式 (例如: 3.5*0.4)');
-                }
+                } else { alert('格式錯誤，請輸入數字或算式 (例如: 3.5*0.4)'); }
             }
         }
 
         function inputKey(key) {
-            if (key === 'AC') {
-                inputValue = '';
-            } else if (key === 'DEL') {
-                inputValue = inputValue.slice(0, -1);
-            } else if (key === '.') {
-                if (!inputValue.includes('.')) {
-                    inputValue += key;
-                }
-            } else {
-                if (inputValue.length < 8) {
-                    inputValue += key;
-                }
-            }
+            if (key === 'AC') inputValue = '';
+            else if (key === 'DEL') inputValue = inputValue.slice(0, -1);
+            else if (key === '.') { if (!inputValue.includes('.')) inputValue += key; }
+            else { if (inputValue.length < 8) inputValue += key; }
             updateScreen();
         }
 
@@ -1139,7 +1075,6 @@
             document.getElementById('screen-type-name').innerText = type.name;
             const displayVal = inputValue || '0';
             document.getElementById('screen-value').innerText = displayVal;
-            
             let unitLabel = '組';
             if (type.type === 'item') {
                  if (type.name.includes('桿')) unitLabel = '支';
@@ -1150,11 +1085,8 @@
                  unitLabel = type.type === 'linear' ? 'm (長度)' : `${u} (數量)`;
             }
             document.getElementById('screen-unit').innerText = unitLabel;
-            
             const previewEl = document.getElementById('screen-calc-preview');
-            // Clean up old blue text bug: reset innerText first
             previewEl.innerText = '';
-            
             if (val > 0) {
                 if (type.type === 'item') {
                     previewEl.innerText = `統計數量: ${val} ${unitLabel.split(' ')[0]}`;
@@ -1172,54 +1104,36 @@
             const val = parseFloat(inputValue);
             const type = getSelectedType();
             if (!type || isNaN(val) || val <= 0) return;
-
             playDingDong();
-
             const totalFactor = getFactorProduct(type.factors);
             const area = (type.type === 'item') ? 0 : val * totalFactor;
-            
-            // ----------------------------------------
-            // 修改：套用模式前綴
-            // ----------------------------------------
             const prefix = PREFIX_MAP[currentPrefixMode];
-            // 若為預設模式(prefix為空字串)，使用原始名稱
-            // 若為特殊模式，加上前綴與空格
             const finalName = prefix ? `${prefix} ${type.name}` : type.name;
-
             const newItem = {
                 id: Date.now(),
                 typeId: type.id,
-                name: finalName, // 使用組合後的名稱
+                name: finalName, 
                 category: type.category,
                 inputType: type.type,
                 factors: [...type.factors], 
                 inputValue: val,
                 area: area
             };
-            
             historyData = [newItem, ...historyData];
             inputValue = '';
             updateScreen();
             renderHistory();
-            
-            // KEY FIX: Restore focus to the current type button after re-render
             setTimeout(() => {
                 const activeBtn = document.querySelector(`button[data-id="${type.id}"]`);
-                if(activeBtn) {
-                    activeBtn.focus();
-                    keyboardFocusEl = activeBtn;
-                    updateFocusVisual();
-                }
+                if(activeBtn) { activeBtn.focus(); keyboardFocusEl = activeBtn; updateFocusVisual(); }
             }, 50);
         }
 
         function renderHistory() {
             const list = document.getElementById('history-list');
             const totalEl = document.getElementById('display-total-area');
-            
             list.innerHTML = '';
             let total = 0;
-
             if (historyData.length === 0) {
                 list.innerHTML = '<div class="text-center text-slate-400 mt-4 text-xs">暫無資料</div>';
             } else {
@@ -1227,17 +1141,14 @@
                     total += item.area;
                     const el = document.createElement('div');
                     el.className = "bg-white p-1.5 rounded border border-slate-200 flex justify-between items-center animate-fadeIn gap-2 shadow-sm";
-                    
                     const factorStr = fmtFactors(item.factors, {name: item.name, id: item.typeId, type: item.inputType});
                     let unit = getUnitName({ type: item.inputType, id: item.typeId, name: item.name });
                     if(item.inputType === 'item') {
                          if (item.name.includes('桿')) unit = '支';
                          else unit = '個';
                     }
-
                     let detailHtml = '';
                     let rightHtml = '';
-
                     if (item.inputType === 'item') {
                         detailHtml = `輸入: ${fmtNum(item.inputValue)}${unit}`;
                         rightHtml = `<div class="font-mono font-bold text-slate-500 text-xs">數量</div>`;
@@ -1245,15 +1156,12 @@
                         detailHtml = `輸入: ${fmtNum(item.inputValue)}${unit} <span class="text-slate-300">|</span> 係: ${factorStr}`;
                         rightHtml = `<div class="font-mono font-bold text-blue-600 text-xs">${fmtNum(item.area)}</div>`;
                     }
-
                     el.innerHTML = `
                         <div class="overflow-hidden flex-1 min-w-0">
                             <div class="flex items-baseline gap-2">
                                 <span class="font-bold text-slate-700 text-xs truncate leading-tight">${item.name}</span>
                             </div>
-                            <div class="text-[10px] text-slate-500 truncate leading-tight mt-0.5">
-                                ${detailHtml}
-                            </div>
+                            <div class="text-[10px] text-slate-500 truncate leading-tight mt-0.5">${detailHtml}</div>
                         </div>
                         <div class="text-right flex items-center gap-1.5 shrink-0">
                             ${rightHtml}
@@ -1265,222 +1173,97 @@
                     list.appendChild(el);
                 });
             }
-
             totalEl.innerText = fmtNum(total);
             lucide.createIcons();
         }
 
-        function deleteItem(id) {
-            historyData = historyData.filter(i => i.id !== id);
-            renderHistory();
-        }
-
-        function clearAll() {
-            if(confirm('確定要清空所有紀錄嗎？')) {
-                historyData = [];
-                renderHistory();
-            }
-        }
-
-        function openModal() {
-            document.getElementById('modal-custom').classList.remove('hidden');
-            updateCustomLabels();
-        }
-
-        function closeModal() {
-            document.getElementById('modal-custom').classList.add('hidden');
-            document.getElementById('custom-name').value = '';
-            document.getElementById('custom-factors').value = '';
-        }
-
-        function updateCustomLabels() {
-            updateCustomPreview();
-        }
-        
-        function parseFactors(str) {
-            if(!str) return [];
-            return str.split(/[\*\sx]+/).map(s => parseFloat(s)).filter(n => !isNaN(n) && n > 0);
-        }
-
+        function deleteItem(id) { historyData = historyData.filter(i => i.id !== id); renderHistory(); }
+        function clearAll() { if(confirm('確定要清空所有紀錄嗎？')) { historyData = []; renderHistory(); } }
+        function openModal() { document.getElementById('modal-custom').classList.remove('hidden'); updateCustomLabels(); }
+        function closeModal() { document.getElementById('modal-custom').classList.add('hidden'); document.getElementById('custom-name').value = ''; document.getElementById('custom-factors').value = ''; }
+        function updateCustomLabels() { updateCustomPreview(); }
+        function parseFactors(str) { if(!str) return []; return str.split(/[\*\sx]+/).map(s => parseFloat(s)).filter(n => !isNaN(n) && n > 0); }
         function updateCustomPreview() {
             const type = document.getElementById('custom-type').value;
             const factorStr = document.getElementById('custom-factors').value;
             const factors = parseFactors(factorStr);
             const previewEl = document.getElementById('custom-preview');
-            
-            if (type === 'item') {
-                 previewEl.innerText = "純數量統計 (無面積)";
-                 return;
-            }
-
-            if (factors.length === 0) {
-                previewEl.innerText = `1${type === 'linear' ? 'm' : '點'} * ? = ? m²`;
-                return;
-            }
-            
+            if (type === 'item') { previewEl.innerText = "純數量統計 (無面積)"; return; }
+            if (factors.length === 0) { previewEl.innerText = `1${type === 'linear' ? 'm' : '點'} * ? = ? m²`; return; }
             const totalFactor = getFactorProduct(factors);
             const displayFactors = fmtFactors(factors, {name: 'custom'});
-            
-            previewEl.innerText = type === 'linear' 
-                ? `1m * ${displayFactors} = ${fmtNum(totalFactor)} m²` 
-                : `1點 * ${displayFactors} = ${fmtNum(totalFactor)} m²`;
+            previewEl.innerText = type === 'linear' ? `1m * ${displayFactors} = ${fmtNum(totalFactor)} m²` : `1點 * ${displayFactors} = ${fmtNum(totalFactor)} m²`;
         }
-
         function saveCustomType() {
             const name = document.getElementById('custom-name').value.trim();
             const typeMode = document.getElementById('custom-type').value;
             const factorStr = document.getElementById('custom-factors').value;
             const factors = parseFactors(factorStr);
-
-            if (typeMode !== 'item' && (!name || factors.length === 0)) {
-                alert('請輸入正確的名稱與係數算式 (例如 0.1 或 1.0*0.5)');
-                return;
-            }
-            if (typeMode === 'item' && !name) {
-                 alert('請輸入項目名稱');
-                 return;
-            }
+            if (typeMode !== 'item' && (!name || factors.length === 0)) { alert('請輸入正確的名稱與係數算式 (例如 0.1 或 1.0*0.5)'); return; }
+            if (typeMode === 'item' && !name) { alert('請輸入項目名稱'); return; }
             const finalFactors = (typeMode === 'item' && factors.length === 0) ? [1.0] : factors;
-
-            const newType = {
-                id: 'custom_' + Date.now(),
-                name: name,
-                category: typeMode === 'item' ? 'H' : 'G',
-                type: typeMode,
-                factors: finalFactors,
-                color: typeMode === 'item' ? 'bg-amber-100 border-amber-300 text-amber-900' : 'bg-purple-50 border-purple-200 text-purple-800'
-            };
-
-            types.push(newType);
-            localStorage.setItem('marking_types', JSON.stringify(types));
-            
-            renderTypes();
-            closeModal();
-            selectType(newType.id);
+            const newType = { id: 'custom_' + Date.now(), name: name, category: typeMode === 'item' ? 'H' : 'G', type: typeMode, factors: finalFactors, color: typeMode === 'item' ? 'bg-amber-100 border-amber-300 text-amber-900' : 'bg-purple-50 border-purple-200 text-purple-800' };
+            types.push(newType); localStorage.setItem('marking_types', JSON.stringify(types));
+            renderTypes(); closeModal(); selectType(newType.id);
         }
 
-        // 新增功能：逐條輸出 (O)
         function copyLineItems() {
-            if (historyData.length === 0) {
-                alert('請先輸入統計資料');
-                return;
-            }
-            
-            playVictory(); // 使用勝利音效提示
-
-            // 處理順序：最早輸入的在最前面 (Chronological Order)
-            // historyData 是 [最新, ..., 最舊]，所以需要反轉
+            if (historyData.length === 0) { alert('請先輸入統計資料'); return; }
+            playVictory();
             const lines = [...historyData].reverse().map(item => {
                 let unit = '組';
-                if (item.inputType === 'linear') {
-                    unit = 'm';
-                } else if (item.inputType === 'item') {
-                     if (item.name.includes('桿')) unit = '支';
-                     else unit = '個'; // 涵蓋貓眼
-                } else {
-                    // 根據名稱判斷單位
+                if (item.inputType === 'linear') unit = 'm';
+                else if (item.inputType === 'item') unit = (item.name.includes('桿')) ? '支' : '個'; 
+                else {
                     if (item.name.includes('行穿線')) unit = '條';
-                    else if (item.name.includes('字') || item.typeId.includes('text') || item.typeId.includes('word')) unit = '字';
-                    else if (item.name.includes('點') || item.typeId.includes('dot')) unit = '點';
+                    else if (item.name.includes('字') || item.typeId.includes('text')) unit = '字';
+                    else if (item.name.includes('點')) unit = '點';
                     else if (item.name.includes('條')) unit = '條';
                     else if (item.name.includes('支')) unit = '支';
                     else if (item.name.includes('貓眼')) unit = '個';
                     else if (item.name.includes('桿')) unit = '支';
                     else unit = '組'; 
-                    
-                    // 特殊符號通常用 個
                     if (unit === '組' && (item.name.includes('箭') || item.name.includes('符號'))) unit = '個';
                 }
-                
-                // 格式：名稱+數量+單位 (數量為原始輸入值)
                 return `${item.name}${fmtNum(item.inputValue)}${unit}`;
             });
-
-            // 以換行分隔
             const text = lines.join('\n');
-
             const textarea = document.createElement("textarea");
             textarea.value = text;
             document.body.appendChild(textarea);
             textarea.select();
-            try {
-                document.execCommand('copy');
-                showToast(); 
-            } catch (err) {
-                alert('複製失敗');
-            }
+            try { document.execCommand('copy'); showToast("逐條複製成功！"); } catch (err) { alert('複製失敗'); }
             document.body.removeChild(textarea);
         }
 
         function copyReport() {
-            if (historyData.length === 0) {
-                alert('請先輸入統計資料');
-                return;
-            }
-
+            if (historyData.length === 0) { alert('請先輸入統計資料'); return; }
             playVictory();
-
-            let text = `【道路標線施工日報表】\n`;
-            text += `日期: ${formData.date || '未填寫'}\n`;
-            text += `人員: ${formData.user || '未填寫'} | 班別: ${formData.shift || '未填寫'} | 狀態: ${formData.status || '未填寫'}\n`;
-            text += `業主: ${formData.owner || '未填寫'} | 車輛: ${formData.car || '未填寫'}\n`;
-            text += `地點: ${formData.location || '未填寫'}\n`;
-            text += `------------------------\n`; 
-
-            // 定義分區
-            const sections = {
-                mark: { label: '標線', groups: {} },
-                primer: { label: '底油', groups: {} },
-                remove: { label: '刨除', groups: {} },
-                black: { label: '黑漆', groups: {} },
-                color: { label: '彩標', groups: {} },
-                cold: { label: '冷塑', groups: {} }
-            };
-            
+            let text = `【道路標線施工日報表】\n日期: ${formData.date || '未填寫'}\n人員: ${formData.user || '未填寫'} | 班別: ${formData.shift || '未填寫'} | 狀態: ${formData.status || '未填寫'}\n業主: ${formData.owner || '未填寫'} | 車輛: ${formData.car || '未填寫'}\n地點: ${formData.location || '未填寫'}\n------------------------\n`; 
+            const sections = { mark: { label: '標線', groups: {} }, primer: { label: '底油', groups: {} }, remove: { label: '刨除', groups: {} }, black: { label: '黑漆', groups: {} }, color: { label: '彩標', groups: {} }, cold: { label: '冷塑', groups: {} } };
             const itemsH = {}; 
-            
-            // 資料分類
             [...historyData].reverse().forEach(item => {
-                // H 類或計次項目 (非面積)
                 if (item.category === 'H' || item.inputType === 'item') {
-                    if (!itemsH[item.name]) {
-                        itemsH[item.name] = { values: [] };
-                    }
+                    if (!itemsH[item.name]) itemsH[item.name] = { values: [] };
                     itemsH[item.name].values.push(item.inputValue);
                 } else {
-                    // 面積項目：根據名稱前綴分類
                     let sectionKey = 'mark';
                     if (item.name.startsWith('底油 ')) sectionKey = 'primer';
                     else if (item.name.startsWith('刨除 ')) sectionKey = 'remove';
                     else if (item.name.startsWith('黑漆 ')) sectionKey = 'black';
                     else if (item.name.startsWith('彩標 ')) sectionKey = 'color';
                     else if (item.name.startsWith('冷塑 ')) sectionKey = 'cold';
-                    
                     const sec = sections[sectionKey];
-                    if (!sec.groups[item.name]) {
-                        sec.groups[item.name] = {
-                            items: [],
-                            type: item.inputType,
-                            typeId: item.typeId, 
-                            factors: item.factors,
-                            totalArea: 0
-                        };
-                    }
+                    if (!sec.groups[item.name]) sec.groups[item.name] = { items: [], type: item.inputType, typeId: item.typeId, factors: item.factors, totalArea: 0 };
                     sec.groups[item.name].items.push(item.inputValue);
                     sec.groups[item.name].totalArea += item.area;
                 }
             });
-
-            // 產生各區塊文字的輔助函式
             const generateSectionText = (key) => {
                 const sec = sections[key];
                 const groupNames = Object.keys(sec.groups);
                 if (groupNames.length === 0) return '';
-
-                let sectionText = '';
-                const groupAreas = [];
-                let sectionTotalArea = 0;
-
+                let sectionText = ''; const groupAreas = []; let sectionTotalArea = 0;
                 groupNames.forEach(name => {
                     const g = sec.groups[name];
                     const values = g.items;
@@ -1489,119 +1272,186 @@
                     const factorStr = fmtFactors(g.factors, {name: name, id: g.typeId});
                     const areaFmt = fmtNum(g.totalArea);
                     const unit = getUnitName({ type: g.type, id: g.typeId, name: name });
-
-                    if (values.length > 1) {
-                        const valJoined = values.map(v => fmtNum(v)).join('+');
-                        sectionText += `${name}:(${valJoined})=${sumFmt}${unit}*${factorStr}=${areaFmt}m²\n`;
-                    } else {
-                        sectionText += `${name}:${sumFmt}${unit}*${factorStr}=${areaFmt}m²\n`;
-                    }
-                    
-                    groupAreas.push(areaFmt);
-                    sectionTotalArea += g.totalArea;
+                    if (values.length > 1) { const valJoined = values.map(v => fmtNum(v)).join('+'); sectionText += `${name}:(${valJoined})=${sumFmt}${unit}*${factorStr}=${areaFmt}m²\n`; } 
+                    else { sectionText += `${name}:${sumFmt}${unit}*${factorStr}=${areaFmt}m²\n`; }
+                    groupAreas.push(areaFmt); sectionTotalArea += g.totalArea;
                 });
-
-                sectionText += `\n`; 
-                let totalFormula = "";
-                if (groupAreas.length > 1) {
-                    totalFormula = `(${groupAreas.join('+')})=`;
-                }
-                
-                sectionText += `${sec.label}總計:${totalFormula}${fmtNum(sectionTotalArea)}m²\n`;
-                sectionText += `------------------------\n`;
+                sectionText += `\n`; let totalFormula = "";
+                if (groupAreas.length > 1) totalFormula = `(${groupAreas.join('+')})=`;
+                sectionText += `${sec.label}總計:${totalFormula}${fmtNum(sectionTotalArea)}m²\n------------------------\n`;
                 return sectionText;
             };
-
-            // 依序產生報表
-            text += generateSectionText('mark');
-            text += generateSectionText('primer');
-            text += generateSectionText('remove');
-            text += generateSectionText('black');
-            text += generateSectionText('color');
-            text += generateSectionText('cold');
-            
-            // 非標線項目 (H類)
+            text += generateSectionText('mark'); text += generateSectionText('primer'); text += generateSectionText('remove'); text += generateSectionText('black'); text += generateSectionText('color'); text += generateSectionText('cold');
             if (Object.keys(itemsH).length > 0) {
                 text += `【非標線施工項目】\n`;
                 Object.keys(itemsH).forEach(name => {
                     const values = itemsH[name].values;
                     const sum = values.reduce((a, b) => a + b, 0);
                     const sumFmt = fmtNum(sum);
-                    
-                    let unit = '個';
-                    if(name.includes('桿')) unit = '支';
-
-                    if (values.length > 1) {
-                        const valJoined = values.map(v => fmtNum(v)).join('+');
-                        text += `${name}總計:(${valJoined})=${sumFmt}${unit}\n`;
-                    } else {
-                        text += `${name}:${sumFmt}${unit}\n`;
-                    }
+                    let unit = name.includes('桿') ? '支' : '個';
+                    if (values.length > 1) { const valJoined = values.map(v => fmtNum(v)).join('+'); text += `${name}總計:(${valJoined})=${sumFmt}${unit}\n`; } 
+                    else { text += `${name}:${sumFmt}${unit}\n`; }
                 });
             }
-
-            const textarea = document.createElement("textarea");
-            textarea.value = text;
-            document.body.appendChild(textarea);
-            textarea.select();
-            try {
-                document.execCommand('copy');
-                showToast();
-            } catch (err) {
-                alert('複製失敗');
-            }
+            const textarea = document.createElement("textarea"); textarea.value = text; document.body.appendChild(textarea); textarea.select();
+            try { document.execCommand('copy'); showToast("報表複製成功！"); } catch (err) { alert('複製失敗'); }
             document.body.removeChild(textarea);
         }
 
-        function showToast() {
-            const toast = document.getElementById('toast');
-            toast.classList.remove('hidden');
-            toast.classList.add('flex');
+        // 修改後的 PDF 輸出邏輯：View Swapping
+        function exportPDF() {
+            if (historyData.length === 0) { alert('請先輸入統計資料'); return; }
+            playVictory();
+            
+            // 填寫數據
+            document.getElementById('pdf-date').innerText = formData.date || '未填寫';
+            document.getElementById('pdf-owner').innerText = formData.owner || '未填寫';
+            document.getElementById('pdf-user').innerText = formData.user || '未填寫';
+            document.getElementById('pdf-shift').innerText = formData.shift || '未填寫';
+            document.getElementById('pdf-status').innerText = formData.status || '未填寫';
+            document.getElementById('pdf-location').innerText = formData.location || '未填寫';
+            document.getElementById('pdf-car').innerText = formData.car || '未填寫';
+
+            // 填充左欄
+            const leftCol = document.getElementById('pdf-left-col');
+            leftCol.innerHTML = '';
+            const sections = { mark: { label: '標線', groups: {} }, primer: { label: '底油', groups: {} }, remove: { label: '刨除', groups: {} }, black: { label: '黑漆', groups: {} }, color: { label: '彩標', groups: {} }, cold: { label: '冷塑', groups: {} } };
+            const itemsH = {}; 
+            let totalProjectArea = 0;
+
+            [...historyData].reverse().forEach(item => {
+                if (item.category === 'H' || item.inputType === 'item') {
+                    if (!itemsH[item.name]) itemsH[item.name] = { values: [] };
+                    itemsH[item.name].values.push(item.inputValue);
+                } else {
+                    let sectionKey = 'mark';
+                    if (item.name.startsWith('底油 ')) sectionKey = 'primer';
+                    else if (item.name.startsWith('刨除 ')) sectionKey = 'remove';
+                    else if (item.name.startsWith('黑漆 ')) sectionKey = 'black';
+                    else if (item.name.startsWith('彩標 ')) sectionKey = 'color';
+                    else if (item.name.startsWith('冷塑 ')) sectionKey = 'cold';
+                    const sec = sections[sectionKey];
+                    if (!sec.groups[item.name]) sec.groups[item.name] = { items: [], type: item.inputType, typeId: item.typeId, factors: item.factors, totalArea: 0 };
+                    sec.groups[item.name].items.push(item.inputValue);
+                    sec.groups[item.name].totalArea += item.area;
+                    totalProjectArea += item.area;
+                }
+            });
+            document.getElementById('pdf-total-area').innerText = fmtNum(totalProjectArea);
+
+            const appendSectionHtml = (key) => {
+                const sec = sections[key];
+                const groupNames = Object.keys(sec.groups);
+                if (groupNames.length === 0) return;
+                const wrapper = document.createElement('div');
+                wrapper.className = 'pdf-section';
+                let html = `<div class="font-bold border-b border-gray-300 mb-1">${sec.label}</div>`;
+                let sectionTotal = 0;
+                groupNames.forEach(name => {
+                    const g = sec.groups[name];
+                    const values = g.items;
+                    const sum = values.reduce((a, b) => a + b, 0);
+                    const areaFmt = fmtNum(g.totalArea);
+                    const unit = getUnitName({ type: g.type, id: g.typeId, name: name });
+                    const factorStr = fmtFactors(g.factors, {name: name, id: g.typeId});
+                    let valStr = values.length > 1 ? `(${values.map(v=>fmtNum(v)).join('+')})=${fmtNum(sum)}` : fmtNum(sum);
+                    html += `<div class="flex justify-between"><span>${name}: ${valStr}${unit} × ${factorStr}</span><span>= ${areaFmt} m²</span></div>`;
+                    sectionTotal += g.totalArea;
+                });
+                html += `<div class="text-right font-bold mt-1 border-t border-dotted border-gray-400 pt-1">${sec.label}總計: ${fmtNum(sectionTotal)} m²</div>`;
+                wrapper.innerHTML = html;
+                leftCol.appendChild(wrapper);
+            };
+            appendSectionHtml('mark'); appendSectionHtml('primer'); appendSectionHtml('remove'); appendSectionHtml('black'); appendSectionHtml('color'); appendSectionHtml('cold');
+
+            if (Object.keys(itemsH).length > 0) {
+                const wrapper = document.createElement('div'); wrapper.className = 'pdf-section mt-4';
+                let html = `<div class="font-bold border-b border-gray-300 mb-1">非標線施工項目</div>`;
+                Object.keys(itemsH).forEach(name => {
+                    const values = itemsH[name].values;
+                    const sum = values.reduce((a, b) => a + b, 0);
+                    let unit = name.includes('桿') ? '支' : '個';
+                    let valStr = values.length > 1 ? `(${values.map(v=>fmtNum(v)).join('+')})` : '';
+                    html += `<div class="flex justify-between"><span>${name} ${valStr}</span><span>= ${fmtNum(sum)} ${unit}</span></div>`;
+                });
+                wrapper.innerHTML = html; leftCol.appendChild(wrapper);
+            }
+
+            // 填充右欄
+            const rightCol = document.getElementById('pdf-right-col'); rightCol.innerHTML = '';
+            document.getElementById('pdf-count-badge').innerText = `共 ${historyData.length} 筆`;
+            [...historyData].reverse().forEach(item => {
+                let unit = '組';
+                if (item.inputType === 'linear') unit = 'm';
+                else if (item.inputType === 'item') unit = (item.name.includes('桿')) ? '支' : '個';
+                else {
+                    if (item.name.includes('行穿線')) unit = '條';
+                    else if (item.name.includes('字') || item.typeId.includes('text')) unit = '字';
+                    else if (item.name.includes('點')) unit = '點';
+                    else if (item.name.includes('貓眼')) unit = '個';
+                    else if (item.name.includes('箭')) unit = '個';
+                }
+                const li = document.createElement('li');
+                li.innerText = `${item.name} ${fmtNum(item.inputValue)}${unit}`;
+                rightCol.appendChild(li);
+            });
+
+            // --- 核心修改：切換視圖模式 ---
+            const template = document.getElementById('pdf-template');
+            
+            // 進入 PDF 模式 (CSS 會隱藏其他所有元素，只顯示 template)
+            document.body.classList.add('pdf-mode');
+            window.scrollTo(0, 0); // 滾動到頂部確保截圖完整
+
+            showToast("正在生成 PDF...", false);
+
+            const opt = {
+                margin: 10,
+                filename: `${formData.date}_${formData.owner}_${formData.location}_${formData.user}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { 
+                    scale: 2, 
+                    useCORS: true, 
+                    scrollY: 0,
+                    windowWidth: document.body.scrollWidth,
+                    height: template.offsetHeight
+                }, 
+                jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+            };
+
+            // 延遲執行確保渲染完成
             setTimeout(() => {
-                toast.classList.add('hidden');
-                toast.classList.remove('flex');
-            }, 2000);
+                html2pdf().set(opt).from(template).save().then(() => {
+                    // 恢復正常模式
+                    document.body.classList.remove('pdf-mode');
+                    showToast("PDF 下載成功！");
+                }).catch(err => {
+                    console.error(err);
+                    document.body.classList.remove('pdf-mode');
+                    alert("PDF 生成失敗");
+                });
+            }, 800);
+        }
+
+        function showToast(msg, autoHide = true) {
+            const toast = document.getElementById('toast');
+            const msgEl = document.getElementById('toast-msg');
+            if(msg) { toast.querySelector('.font-bold').innerText = msg; msgEl.style.display = 'none'; } 
+            else { toast.querySelector('.font-bold').innerText = "操作成功！"; msgEl.style.display = 'block'; }
+            toast.classList.remove('hidden'); toast.classList.add('flex');
+            if(autoHide) { setTimeout(() => { toast.classList.add('hidden'); toast.classList.remove('flex'); }, 2000); }
         }
 
         init();
         
         const style = document.createElement('style');
         style.textContent = `
-            .key-btn {
-                border-radius: 0.5rem; 
-                font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
-                font-weight: 700;
-                box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-                transition-property: all;
-                transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
-                transition-duration: 150ms;
-                display: flex;
-                align-items: center;
-                justify-content: center;
-            }
-            .key-btn:active {
-                transform: translateY(2px);
-                box-shadow: none;
-            }
-            @keyframes fadeIn {
-                from { opacity: 0; transform: translateY(10px); }
-                to { opacity: 1; transform: translateY(0); }
-            }
-            .animate-fadeIn {
-                animation: fadeIn 0.3s ease-out forwards;
-            }
-            /* Hide scrollbar for Chrome, Safari and Opera */
-            .scrollbar-hide::-webkit-scrollbar {
-                display: none;
-            }
-            /* Hide scrollbar for IE, Edge and Firefox */
-            .scrollbar-hide {
-                -ms-overflow-style: none;  /* IE and Edge */
-                scrollbar-width: none;  /* Firefox */
-            }
+            .key-btn { border-radius: 0.5rem; font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-weight: 700; box-shadow: 0 1px 2px 0 rgba(0, 0, 0, 0.05); transition-property: all; transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1); transition-duration: 150ms; display: flex; align-items: center; justify-content: center; }
+            .key-btn:active { transform: translateY(2px); box-shadow: none; }
+            @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+            .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
         `;
         document.head.appendChild(style);
-
     </script>
 </body>
 </html>
