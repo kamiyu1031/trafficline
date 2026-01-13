@@ -172,17 +172,19 @@
                     
                     <!-- 標題與工具列 -->
                     <div class="flex justify-between items-center sticky top-0 bg-slate-50 py-1 z-20 mb-1 shadow-sm px-1 flex-wrap gap-y-1">
-                        <div class="flex items-center gap-2">
+                        <div class="flex items-center gap-2 max-w-full">
                             <h2 class="text-xs font-bold text-slate-500 flex items-center gap-1 shrink-0">
-                                <i data-lucide="grid" class="w-3 h-3"></i> 1. 選擇類型
+                                <i data-lucide="grid" class="w-3 h-3"></i> 1. 類型
                             </h2>
                             
                             <!-- 新增：模式切換按鈕群組 -->
-                            <div class="flex items-center bg-slate-200 rounded p-0.5 shrink-0">
-                                <button onclick="setPrefixMode('mark')" id="btn-mode-mark" class="px-2 py-0.5 text-[10px] rounded transition-all mode-btn-active">標線</button>
-                                <button onclick="setPrefixMode('primer')" id="btn-mode-primer" class="px-2 py-0.5 text-[10px] rounded transition-all mode-btn-inactive">底油</button>
-                                <button onclick="setPrefixMode('remove')" id="btn-mode-remove" class="px-2 py-0.5 text-[10px] rounded transition-all mode-btn-inactive">刨除</button>
-                                <button onclick="setPrefixMode('black')" id="btn-mode-black" class="px-2 py-0.5 text-[10px] rounded transition-all mode-btn-inactive">黑漆</button>
+                            <div class="flex items-center bg-slate-200 rounded p-0.5 shrink-0 overflow-x-auto max-w-[220px] sm:max-w-none scrollbar-hide">
+                                <button onclick="setPrefixMode('mark')" id="btn-mode-mark" class="px-2 py-0.5 text-[10px] rounded transition-all mode-btn-active whitespace-nowrap">標線</button>
+                                <button onclick="setPrefixMode('primer')" id="btn-mode-primer" class="px-2 py-0.5 text-[10px] rounded transition-all mode-btn-inactive whitespace-nowrap">底油</button>
+                                <button onclick="setPrefixMode('remove')" id="btn-mode-remove" class="px-2 py-0.5 text-[10px] rounded transition-all mode-btn-inactive whitespace-nowrap">刨除</button>
+                                <button onclick="setPrefixMode('black')" id="btn-mode-black" class="px-2 py-0.5 text-[10px] rounded transition-all mode-btn-inactive whitespace-nowrap">黑漆</button>
+                                <button onclick="setPrefixMode('color')" id="btn-mode-color" class="px-2 py-0.5 text-[10px] rounded transition-all mode-btn-inactive whitespace-nowrap">彩標</button>
+                                <button onclick="setPrefixMode('cold')" id="btn-mode-cold" class="px-2 py-0.5 text-[10px] rounded transition-all mode-btn-inactive whitespace-nowrap">冷塑</button>
                             </div>
                         </div>
 
@@ -820,7 +822,9 @@
             'mark': '',
             'primer': '底油',
             'remove': '刨除',
-            'black': '黑漆'
+            'black': '黑漆',
+            'color': '彩標',
+            'cold': '冷塑'
         };
 
         function loadTypes() {
@@ -956,7 +960,7 @@
             currentPrefixMode = mode;
             
             // 更新按鈕外觀
-            ['mark', 'primer', 'remove', 'black'].forEach(m => {
+            ['mark', 'primer', 'remove', 'black', 'color', 'cold'].forEach(m => {
                 const btn = document.getElementById(`btn-mode-${m}`);
                 if (m === mode) {
                     btn.classList.add('mode-btn-active');
@@ -1356,7 +1360,9 @@
                 mark: { label: '標線', groups: {} },
                 primer: { label: '底油', groups: {} },
                 remove: { label: '刨除', groups: {} },
-                black: { label: '黑漆', groups: {} }
+                black: { label: '黑漆', groups: {} },
+                color: { label: '彩標', groups: {} },
+                cold: { label: '冷塑', groups: {} }
             };
             
             const itemsH = {}; 
@@ -1375,6 +1381,8 @@
                     if (item.name.startsWith('底油 ')) sectionKey = 'primer';
                     else if (item.name.startsWith('刨除 ')) sectionKey = 'remove';
                     else if (item.name.startsWith('黑漆 ')) sectionKey = 'black';
+                    else if (item.name.startsWith('彩標 ')) sectionKey = 'color';
+                    else if (item.name.startsWith('冷塑 ')) sectionKey = 'cold';
                     
                     const sec = sections[sectionKey];
                     if (!sec.groups[item.name]) {
@@ -1437,6 +1445,8 @@
             text += generateSectionText('primer');
             text += generateSectionText('remove');
             text += generateSectionText('black');
+            text += generateSectionText('color');
+            text += generateSectionText('cold');
             
             // 非標線項目 (H類)
             if (Object.keys(itemsH).length > 0) {
@@ -1507,6 +1517,15 @@
             }
             .animate-fadeIn {
                 animation: fadeIn 0.3s ease-out forwards;
+            }
+            /* Hide scrollbar for Chrome, Safari and Opera */
+            .scrollbar-hide::-webkit-scrollbar {
+                display: none;
+            }
+            /* Hide scrollbar for IE, Edge and Firefox */
+            .scrollbar-hide {
+                -ms-overflow-style: none;  /* IE and Edge */
+                scrollbar-width: none;  /* Firefox */
             }
         `;
         document.head.appendChild(style);
