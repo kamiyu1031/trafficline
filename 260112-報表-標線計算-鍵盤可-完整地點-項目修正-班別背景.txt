@@ -112,6 +112,8 @@
         body.pdf-mode {
             background-color: white !important;
             overflow: visible !important; /* 允許滾動以便截圖 */
+            height: auto !important; /* 修正：強制解除高度限制，避免截圖被切斷 */
+            min-height: 100vh !important;
         }
         body.pdf-mode #start-page,
         body.pdf-mode #main-app, 
@@ -1347,18 +1349,33 @@
                 wrapper.className = 'pdf-section';
                 let html = `<div class="font-bold border-b border-gray-300 mb-1">${sec.label}</div>`;
                 let sectionTotal = 0;
+                
+                // 新增：用於存儲每個項目的面積，以便生成總計公式
+                const sectionAreas = [];
+
                 groupNames.forEach(name => {
                     const g = sec.groups[name];
                     const values = g.items;
                     const sum = values.reduce((a, b) => a + b, 0);
                     const areaFmt = fmtNum(g.totalArea);
+                    
+                    // 收集面積
+                    sectionAreas.push(areaFmt);
+
                     const unit = getUnitName({ type: g.type, id: g.typeId, name: name });
                     const factorStr = fmtFactors(g.factors, {name: name, id: g.typeId});
                     let valStr = values.length > 1 ? `(${values.map(v=>fmtNum(v)).join('+')})=${fmtNum(sum)}` : fmtNum(sum);
                     html += `<div class="flex justify-between"><span>${name}: ${valStr}${unit} × ${factorStr}</span><span>= ${areaFmt} m²</span></div>`;
                     sectionTotal += g.totalArea;
                 });
-                html += `<div class="text-right font-bold mt-1 border-t border-dotted border-gray-400 pt-1">${sec.label}總計: ${fmtNum(sectionTotal)} m²</div>`;
+
+                // 新增：生成總計公式
+                let totalFormula = "";
+                if (sectionAreas.length > 1) {
+                    totalFormula = `(${sectionAreas.join('+')})=`;
+                }
+
+                html += `<div class="text-right font-bold mt-1 border-t border-dotted border-gray-400 pt-1">${sec.label}總計: ${totalFormula}${fmtNum(sectionTotal)} m²</div>`;
                 wrapper.innerHTML = html;
                 leftCol.appendChild(wrapper);
             };
@@ -1413,8 +1430,8 @@
                     scale: 2, 
                     useCORS: true, 
                     scrollY: 0,
-                    windowWidth: document.body.scrollWidth,
-                    height: template.offsetHeight
+                    // Remove height constraint to allow full scroll capture
+                    // height: template.offsetHeight // REMOVED to fix blank clipping
                 }, 
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
