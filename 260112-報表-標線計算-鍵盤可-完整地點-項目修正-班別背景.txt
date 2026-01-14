@@ -287,9 +287,12 @@
             <!-- 右側：列表區 -->
             <div class="flex flex-col md:w-80 lg:w-96 bg-slate-50 border-t md:border-t-0 md:border-l border-slate-200 h-[35vh] md:h-full shrink-0">
                 <div class="p-2 border-b border-slate-200 bg-white flex justify-between items-center shadow-sm h-8 shrink-0">
-                    <h3 class="font-bold text-slate-700 text-xs flex items-center gap-1">
-                        <i data-lucide="history" class="w-3 h-3"></i> 統計列表
-                    </h3>
+                    <div class="flex items-center gap-2">
+                        <button onclick="addPartition()" class="bg-gray-700 hover:bg-gray-800 text-white text-[10px] px-2 py-1 rounded shadow-sm font-bold" title="新增分區分隔線">分區</button>
+                        <h3 class="font-bold text-slate-700 text-xs flex items-center gap-1">
+                            <i data-lucide="history" class="w-3 h-3"></i> 統計列表
+                        </h3>
+                    </div>
                     <button onclick="clearAll()" class="text-[10px] text-red-500 border border-red-200 px-1.5 py-0.5 rounded hover:bg-red-50">清空</button>
                 </div>
                 <div id="history-list" class="flex-1 overflow-y-auto p-1.5 space-y-1 bg-slate-100">
@@ -314,19 +317,22 @@
 
     <!-- PDF 模板 (隱藏) -->
     <div id="pdf-template">
-        <h1 class="text-2xl font-bold mb-4 text-center border-b-2 border-black pb-2">道路標線施工日報表</h1>
+        <!-- 修正：標題從 "道路標線施工日報表" 改為 "道路標線施工數量表" -->
+        <h1 class="text-2xl font-bold mb-4 text-center border-b-2 border-black pb-2">道路標線施工數量表</h1>
         <div class="grid grid-cols-2 gap-4 mb-4 text-sm font-bold">
+            <!-- 修正：日期欄位將包含班別 -->
             <div class="pdf-header-item">日期: <span id="pdf-date"></span></div>
             <div class="pdf-header-item">業主: <span id="pdf-owner"></span></div>
             <div class="pdf-header-item">人員: <span id="pdf-user"></span></div>
-            <div class="pdf-header-item">班別: <span id="pdf-shift"></span></div>
+            <!-- 移除獨立的班別欄位 -->
             <div class="pdf-header-item">狀態: <span id="pdf-status"></span></div>
             <div class="pdf-header-item">地點: <span id="pdf-location"></span></div>
-            <div class="pdf-header-item col-span-2">車輛: <span id="pdf-car"></span></div>
+            <div class="pdf-header-item">車輛: <span id="pdf-car"></span></div>
         </div>
         <div class="pdf-grid">
             <div class="bg-slate-50 p-4 rounded border border-slate-200">
-                <h2 class="text-lg font-bold mb-3 border-b border-slate-300 pb-1 text-blue-800">統計報表</h2>
+                <!-- 修正：左側欄位標題從 "統計報表" 改為 "數量統計" -->
+                <h2 class="text-lg font-bold mb-3 border-b border-slate-300 pb-1 text-blue-800">數量統計</h2>
                 <div id="pdf-left-col" class="text-xs space-y-4 font-mono leading-relaxed"></div>
                 <div class="mt-4 pt-2 border-t-2 border-black font-bold text-sm text-right">
                     總計: <span id="pdf-total-area"></span> m²
@@ -1102,6 +1108,26 @@
             }
         }
 
+        // 新增功能：加入分區
+        function addPartition() {
+            const name = prompt("請輸入分區名稱 (例如: A區):");
+            if (name && name.trim()) {
+                const finalName = `(${name.trim()}).`;
+                const newItem = {
+                    id: Date.now(),
+                    typeId: 'partition_marker',
+                    name: finalName,
+                    category: 'partition', // 特殊分類
+                    inputType: 'partition',
+                    factors: [],
+                    inputValue: 0,
+                    area: 0
+                };
+                historyData = [newItem, ...historyData];
+                renderHistory();
+            }
+        }
+
         function submitInput() {
             const val = parseFloat(inputValue);
             const type = getSelectedType();
@@ -1140,38 +1166,50 @@
                 list.innerHTML = '<div class="text-center text-slate-400 mt-4 text-xs">暫無資料</div>';
             } else {
                 historyData.forEach(item => {
-                    total += item.area;
                     const el = document.createElement('div');
-                    el.className = "bg-white p-1.5 rounded border border-slate-200 flex justify-between items-center animate-fadeIn gap-2 shadow-sm";
-                    const factorStr = fmtFactors(item.factors, {name: item.name, id: item.typeId, type: item.inputType});
-                    let unit = getUnitName({ type: item.inputType, id: item.typeId, name: item.name });
-                    if(item.inputType === 'item') {
-                         if (item.name.includes('桿')) unit = '支';
-                         else unit = '個';
-                    }
-                    let detailHtml = '';
-                    let rightHtml = '';
-                    if (item.inputType === 'item') {
-                        detailHtml = `輸入: ${fmtNum(item.inputValue)}${unit}`;
-                        rightHtml = `<div class="font-mono font-bold text-slate-500 text-xs">數量</div>`;
-                    } else {
-                        detailHtml = `輸入: ${fmtNum(item.inputValue)}${unit} <span class="text-slate-300">|</span> 係: ${factorStr}`;
-                        rightHtml = `<div class="font-mono font-bold text-blue-600 text-xs">${fmtNum(item.area)}</div>`;
-                    }
-                    el.innerHTML = `
-                        <div class="overflow-hidden flex-1 min-w-0">
-                            <div class="flex items-baseline gap-2">
-                                <span class="font-bold text-slate-700 text-xs truncate leading-tight">${item.name}</span>
-                            </div>
-                            <div class="text-[10px] text-slate-500 truncate leading-tight mt-0.5">${detailHtml}</div>
-                        </div>
-                        <div class="text-right flex items-center gap-1.5 shrink-0">
-                            ${rightHtml}
-                            <button onclick="deleteItem(${item.id})" class="text-slate-300 hover:text-red-500 p-1 active:bg-slate-100 rounded">
-                                <i data-lucide="trash-2" class="w-3 h-3"></i>
+                    
+                    // 特殊渲染：分區分隔線
+                    if (item.category === 'partition') {
+                        el.className = "bg-gray-200 p-1 rounded border border-gray-300 flex justify-between items-center shadow-inner mt-1 mb-1";
+                        el.innerHTML = `
+                            <div class="font-bold text-gray-700 text-xs w-full text-center">${item.name}</div>
+                            <button onclick="deleteItem(${item.id})" class="text-gray-400 hover:text-red-500 p-0.5 rounded ml-2">
+                                <i data-lucide="x" class="w-3 h-3"></i>
                             </button>
-                        </div>
-                    `;
+                        `;
+                    } else {
+                        total += item.area;
+                        el.className = "bg-white p-1.5 rounded border border-slate-200 flex justify-between items-center animate-fadeIn gap-2 shadow-sm";
+                        const factorStr = fmtFactors(item.factors, {name: item.name, id: item.typeId, type: item.inputType});
+                        let unit = getUnitName({ type: item.inputType, id: item.typeId, name: item.name });
+                        if(item.inputType === 'item') {
+                             if (item.name.includes('桿')) unit = '支';
+                             else unit = '個';
+                        }
+                        let detailHtml = '';
+                        let rightHtml = '';
+                        if (item.inputType === 'item') {
+                            detailHtml = `輸入: ${fmtNum(item.inputValue)}${unit}`;
+                            rightHtml = `<div class="font-mono font-bold text-slate-500 text-xs">數量</div>`;
+                        } else {
+                            detailHtml = `輸入: ${fmtNum(item.inputValue)}${unit} <span class="text-slate-300">|</span> 係: ${factorStr}`;
+                            rightHtml = `<div class="font-mono font-bold text-blue-600 text-xs">${fmtNum(item.area)}</div>`;
+                        }
+                        el.innerHTML = `
+                            <div class="overflow-hidden flex-1 min-w-0">
+                                <div class="flex items-baseline gap-2">
+                                    <span class="font-bold text-slate-700 text-xs truncate leading-tight">${item.name}</span>
+                                </div>
+                                <div class="text-[10px] text-slate-500 truncate leading-tight mt-0.5">${detailHtml}</div>
+                            </div>
+                            <div class="text-right flex items-center gap-1.5 shrink-0">
+                                ${rightHtml}
+                                <button onclick="deleteItem(${item.id})" class="text-slate-300 hover:text-red-500 p-1 active:bg-slate-100 rounded">
+                                    <i data-lucide="trash-2" class="w-3 h-3"></i>
+                                </button>
+                            </div>
+                        `;
+                    }
                     list.appendChild(el);
                 });
             }
@@ -1213,6 +1251,7 @@
             if (historyData.length === 0) { alert('請先輸入統計資料'); return; }
             playVictory();
             const lines = [...historyData].reverse().map(item => {
+                if (item.category === 'partition') return item.name; // 直接輸出分區名稱
                 let unit = '組';
                 if (item.inputType === 'linear') unit = 'm';
                 else if (item.inputType === 'item') unit = (item.name.includes('桿')) ? '支' : '個'; 
@@ -1238,188 +1277,257 @@
             document.body.removeChild(textarea);
         }
 
+        // 修改：複製報表支援分區邏輯 (修正為 Map 合併)
         function copyReport() {
             if (historyData.length === 0) { alert('請先輸入統計資料'); return; }
             playVictory();
             let text = `【道路標線施工日報表】\n日期: ${formData.date || '未填寫'}\n人員: ${formData.user || '未填寫'} | 班別: ${formData.shift || '未填寫'} | 狀態: ${formData.status || '未填寫'}\n業主: ${formData.owner || '未填寫'} | 車輛: ${formData.car || '未填寫'}\n地點: ${formData.location || '未填寫'}\n------------------------\n`; 
-            const sections = { mark: { label: '標線', groups: {} }, primer: { label: '底油', groups: {} }, remove: { label: '刨除', groups: {} }, black: { label: '黑漆', groups: {} }, color: { label: '彩標', groups: {} }, cold: { label: '冷塑', groups: {} } };
-            const itemsH = {}; 
+            
+            // 使用 Map 進行分區合併
+            const partitionMap = new Map();
+            let currentPartitionName = "預設區";
+
+            // 初始化或獲取分區物件
+            const getPartition = (name) => {
+                if (!partitionMap.has(name)) {
+                    partitionMap.set(name, { name: name, items: [], totalArea: 0 });
+                }
+                return partitionMap.get(name);
+            };
+
+            // 遍歷歷史資料 (由舊到新)
             [...historyData].reverse().forEach(item => {
-                if (item.category === 'H' || item.inputType === 'item') {
-                    if (!itemsH[item.name]) itemsH[item.name] = { values: [] };
-                    itemsH[item.name].values.push(item.inputValue);
+                if (item.category === 'partition') {
+                    currentPartitionName = item.name;
                 } else {
-                    let sectionKey = 'mark';
-                    if (item.name.startsWith('底油 ')) sectionKey = 'primer';
-                    else if (item.name.startsWith('刨除 ')) sectionKey = 'remove';
-                    else if (item.name.startsWith('黑漆 ')) sectionKey = 'black';
-                    else if (item.name.startsWith('彩標 ')) sectionKey = 'color';
-                    else if (item.name.startsWith('冷塑 ')) sectionKey = 'cold';
-                    const sec = sections[sectionKey];
-                    if (!sec.groups[item.name]) sec.groups[item.name] = { items: [], type: item.inputType, typeId: item.typeId, factors: item.factors, totalArea: 0 };
-                    sec.groups[item.name].items.push(item.inputValue);
-                    sec.groups[item.name].totalArea += item.area;
+                    const part = getPartition(currentPartitionName);
+                    part.items.push(item);
+                    part.totalArea += (item.area || 0);
                 }
             });
-            const generateSectionText = (key) => {
-                const sec = sections[key];
-                const groupNames = Object.keys(sec.groups);
-                if (groupNames.length === 0) return '';
-                let sectionText = ''; const groupAreas = []; let sectionTotalArea = 0;
-                groupNames.forEach(name => {
-                    const g = sec.groups[name];
-                    const values = g.items;
-                    const sum = values.reduce((a, b) => a + b, 0);
-                    const sumFmt = fmtNum(sum);
-                    const factorStr = fmtFactors(g.factors, {name: name, id: g.typeId});
-                    const areaFmt = fmtNum(g.totalArea);
-                    const unit = getUnitName({ type: g.type, id: g.typeId, name: name });
-                    if (values.length > 1) { const valJoined = values.map(v => fmtNum(v)).join('+'); sectionText += `${name}:(${valJoined})=${sumFmt}${unit}*${factorStr}=${areaFmt}m²\n`; } 
-                    else { sectionText += `${name}:${sumFmt}${unit}*${factorStr}=${areaFmt}m²\n`; }
-                    groupAreas.push(areaFmt); sectionTotalArea += g.totalArea;
+
+            // 將 Map 轉為 Array 進行輸出
+            const partitions = Array.from(partitionMap.values());
+
+            partitions.forEach(part => {
+                if(part.name !== "預設區") text += `\n【${part.name}】\n`;
+                
+                const sections = { mark: { label: '標線', groups: {} }, primer: { label: '底油', groups: {} }, remove: { label: '刨除', groups: {} }, black: { label: '黑漆', groups: {} }, color: { label: '彩標', groups: {} }, cold: { label: '冷塑', groups: {} } };
+                const itemsH = {}; 
+
+                part.items.forEach(item => {
+                    if (item.category === 'H' || item.inputType === 'item') {
+                        if (!itemsH[item.name]) itemsH[item.name] = { values: [] };
+                        itemsH[item.name].values.push(item.inputValue);
+                    } else {
+                        let sectionKey = 'mark';
+                        if (item.name.startsWith('底油 ')) sectionKey = 'primer';
+                        else if (item.name.startsWith('刨除 ')) sectionKey = 'remove';
+                        else if (item.name.startsWith('黑漆 ')) sectionKey = 'black';
+                        else if (item.name.startsWith('彩標 ')) sectionKey = 'color';
+                        else if (item.name.startsWith('冷塑 ')) sectionKey = 'cold';
+                        const sec = sections[sectionKey];
+                        if (!sec.groups[item.name]) sec.groups[item.name] = { items: [], type: item.inputType, typeId: item.typeId, factors: item.factors, totalArea: 0 };
+                        sec.groups[item.name].items.push(item.inputValue);
+                        sec.groups[item.name].totalArea += item.area;
+                    }
                 });
-                sectionText += `\n`; let totalFormula = "";
-                if (groupAreas.length > 1) totalFormula = `(${groupAreas.join('+')})=`;
-                sectionText += `${sec.label}總計:${totalFormula}${fmtNum(sectionTotalArea)}m²\n------------------------\n`;
-                return sectionText;
-            };
-            text += generateSectionText('mark'); text += generateSectionText('primer'); text += generateSectionText('remove'); text += generateSectionText('black'); text += generateSectionText('color'); text += generateSectionText('cold');
-            if (Object.keys(itemsH).length > 0) {
-                text += `【非標線施工項目】\n`;
-                Object.keys(itemsH).forEach(name => {
-                    const values = itemsH[name].values;
-                    const sum = values.reduce((a, b) => a + b, 0);
-                    const sumFmt = fmtNum(sum);
-                    let unit = name.includes('桿') ? '支' : '個';
-                    if (values.length > 1) { const valJoined = values.map(v => fmtNum(v)).join('+'); text += `${name}總計:(${valJoined})=${sumFmt}${unit}\n`; } 
-                    else { text += `${name}:${sumFmt}${unit}\n`; }
-                });
-            }
+
+                const generateSectionText = (key) => {
+                    const sec = sections[key];
+                    const groupNames = Object.keys(sec.groups);
+                    if (groupNames.length === 0) return '';
+                    let sectionText = ''; const groupAreas = []; let sectionTotalArea = 0;
+                    groupNames.forEach(name => {
+                        const g = sec.groups[name];
+                        const values = g.items;
+                        const sum = values.reduce((a, b) => a + b, 0);
+                        const sumFmt = fmtNum(sum);
+                        const factorStr = fmtFactors(g.factors, {name: name, id: g.typeId});
+                        const areaFmt = fmtNum(g.totalArea);
+                        const unit = getUnitName({ type: g.type, id: g.typeId, name: name });
+                        if (values.length > 1) { const valJoined = values.map(v => fmtNum(v)).join('+'); sectionText += `${name}:(${valJoined})=${sumFmt}${unit}*${factorStr}=${areaFmt}m²\n`; } 
+                        else { sectionText += `${name}:${sumFmt}${unit}*${factorStr}=${areaFmt}m²\n`; }
+                        groupAreas.push(areaFmt); sectionTotalArea += g.totalArea;
+                    });
+                    sectionText += `\n`; let totalFormula = "";
+                    if (groupAreas.length > 1) totalFormula = `(${groupAreas.join('+')})=`;
+                    sectionText += `${sec.label}總計:${totalFormula}${fmtNum(sectionTotalArea)}m²\n------------------------\n`;
+                    return sectionText;
+                };
+
+                text += generateSectionText('mark'); text += generateSectionText('primer'); text += generateSectionText('remove'); text += generateSectionText('black'); text += generateSectionText('color'); text += generateSectionText('cold');
+                
+                if (Object.keys(itemsH).length > 0) {
+                    text += `【非標線施工項目】\n`;
+                    Object.keys(itemsH).forEach(name => {
+                        const values = itemsH[name].values;
+                        const sum = values.reduce((a, b) => a + b, 0);
+                        const sumFmt = fmtNum(sum);
+                        let unit = name.includes('桿') ? '支' : '個';
+                        if (values.length > 1) { const valJoined = values.map(v => fmtNum(v)).join('+'); text += `${name}總計:(${valJoined})=${sumFmt}${unit}\n`; } 
+                        else { text += `${name}:${sumFmt}${unit}\n`; }
+                    });
+                }
+            });
+
             const textarea = document.createElement("textarea"); textarea.value = text; document.body.appendChild(textarea); textarea.select();
             try { document.execCommand('copy'); showToast("報表複製成功！"); } catch (err) { alert('複製失敗'); }
             document.body.removeChild(textarea);
         }
 
-        // 修改後的 PDF 輸出邏輯：View Swapping
+        // 修改後的 PDF 輸出邏輯：View Swapping + Partition Aggregation + Clipping Fix
         function exportPDF() {
             if (historyData.length === 0) { alert('請先輸入統計資料'); return; }
             playVictory();
             
-            // 填寫數據
-            document.getElementById('pdf-date').innerText = formData.date || '未填寫';
+            let dateStr = formData.date || '未填寫';
+            if(dateStr !== '未填寫') dateStr = dateStr.replace(/-/g, '/');
+            const shiftStr = formData.shift || '';
+            const mergedDate = shiftStr ? `${dateStr}-${shiftStr}` : dateStr;
+
+            document.getElementById('pdf-date').innerText = mergedDate;
             document.getElementById('pdf-owner').innerText = formData.owner || '未填寫';
             document.getElementById('pdf-user').innerText = formData.user || '未填寫';
-            document.getElementById('pdf-shift').innerText = formData.shift || '未填寫';
             document.getElementById('pdf-status').innerText = formData.status || '未填寫';
             document.getElementById('pdf-location').innerText = formData.location || '未填寫';
             document.getElementById('pdf-car').innerText = formData.car || '未填寫';
 
-            // 填充左欄
             const leftCol = document.getElementById('pdf-left-col');
             leftCol.innerHTML = '';
-            const sections = { mark: { label: '標線', groups: {} }, primer: { label: '底油', groups: {} }, remove: { label: '刨除', groups: {} }, black: { label: '黑漆', groups: {} }, color: { label: '彩標', groups: {} }, cold: { label: '冷塑', groups: {} } };
-            const itemsH = {}; 
+            
+            // 分區處理 (Map 聚合)
+            const partitionMap = new Map();
+            let currentPartitionName = "預設區";
             let totalProjectArea = 0;
 
+            const getPartition = (name) => {
+                if (!partitionMap.has(name)) {
+                    partitionMap.set(name, { name: name, items: [], totalArea: 0 });
+                }
+                return partitionMap.get(name);
+            };
+
             [...historyData].reverse().forEach(item => {
-                if (item.category === 'H' || item.inputType === 'item') {
-                    if (!itemsH[item.name]) itemsH[item.name] = { values: [] };
-                    itemsH[item.name].values.push(item.inputValue);
+                if (item.category === 'partition') {
+                    currentPartitionName = item.name;
                 } else {
-                    let sectionKey = 'mark';
-                    if (item.name.startsWith('底油 ')) sectionKey = 'primer';
-                    else if (item.name.startsWith('刨除 ')) sectionKey = 'remove';
-                    else if (item.name.startsWith('黑漆 ')) sectionKey = 'black';
-                    else if (item.name.startsWith('彩標 ')) sectionKey = 'color';
-                    else if (item.name.startsWith('冷塑 ')) sectionKey = 'cold';
-                    const sec = sections[sectionKey];
-                    if (!sec.groups[item.name]) sec.groups[item.name] = { items: [], type: item.inputType, typeId: item.typeId, factors: item.factors, totalArea: 0 };
-                    sec.groups[item.name].items.push(item.inputValue);
-                    sec.groups[item.name].totalArea += item.area;
-                    totalProjectArea += item.area;
+                    const part = getPartition(currentPartitionName);
+                    part.items.push(item);
+                    part.totalArea += (item.area || 0);
+                    totalProjectArea += (item.area || 0);
                 }
             });
+            
             document.getElementById('pdf-total-area').innerText = fmtNum(totalProjectArea);
 
-            const appendSectionHtml = (key) => {
-                const sec = sections[key];
-                const groupNames = Object.keys(sec.groups);
-                if (groupNames.length === 0) return;
-                const wrapper = document.createElement('div');
-                wrapper.className = 'pdf-section';
-                let html = `<div class="font-bold border-b border-gray-300 mb-1">${sec.label}</div>`;
-                let sectionTotal = 0;
-                
-                // 新增：用於存儲每個項目的面積，以便生成總計公式
-                const sectionAreas = [];
+            const partitions = Array.from(partitionMap.values());
 
-                groupNames.forEach(name => {
-                    const g = sec.groups[name];
-                    const values = g.items;
-                    const sum = values.reduce((a, b) => a + b, 0);
-                    const areaFmt = fmtNum(g.totalArea);
-                    
-                    // 收集面積
-                    sectionAreas.push(areaFmt);
+            partitions.forEach(part => {
+                const sections = { mark: { label: '標線', groups: {} }, primer: { label: '底油', groups: {} }, remove: { label: '刨除', groups: {} }, black: { label: '黑漆', groups: {} }, color: { label: '彩標', groups: {} }, cold: { label: '冷塑', groups: {} } };
+                const itemsH = {}; 
 
-                    const unit = getUnitName({ type: g.type, id: g.typeId, name: name });
-                    const factorStr = fmtFactors(g.factors, {name: name, id: g.typeId});
-                    let valStr = values.length > 1 ? `(${values.map(v=>fmtNum(v)).join('+')})=${fmtNum(sum)}` : fmtNum(sum);
-                    html += `<div class="flex justify-between"><span>${name}: ${valStr}${unit} × ${factorStr}</span><span>= ${areaFmt} m²</span></div>`;
-                    sectionTotal += g.totalArea;
-                });
-
-                // 新增：生成總計公式
-                let totalFormula = "";
-                if (sectionAreas.length > 1) {
-                    totalFormula = `(${sectionAreas.join('+')})=`;
+                // 如果有特定分區名稱，顯示標題
+                if(part.name !== "預設區") {
+                    const header = document.createElement('div');
+                    header.className = "font-bold text-base bg-blue-100 text-blue-900 p-1 mb-2 mt-4 border-l-4 border-blue-600";
+                    header.innerText = part.name;
+                    leftCol.appendChild(header);
                 }
 
-                html += `<div class="text-right font-bold mt-1 border-t border-dotted border-gray-400 pt-1">${sec.label}總計: ${totalFormula}${fmtNum(sectionTotal)} m²</div>`;
-                wrapper.innerHTML = html;
-                leftCol.appendChild(wrapper);
-            };
-            appendSectionHtml('mark'); appendSectionHtml('primer'); appendSectionHtml('remove'); appendSectionHtml('black'); appendSectionHtml('color'); appendSectionHtml('cold');
-
-            if (Object.keys(itemsH).length > 0) {
-                const wrapper = document.createElement('div'); wrapper.className = 'pdf-section mt-4';
-                let html = `<div class="font-bold border-b border-gray-300 mb-1">非標線施工項目</div>`;
-                Object.keys(itemsH).forEach(name => {
-                    const values = itemsH[name].values;
-                    const sum = values.reduce((a, b) => a + b, 0);
-                    let unit = name.includes('桿') ? '支' : '個';
-                    let valStr = values.length > 1 ? `(${values.map(v=>fmtNum(v)).join('+')})` : '';
-                    html += `<div class="flex justify-between"><span>${name} ${valStr}</span><span>= ${fmtNum(sum)} ${unit}</span></div>`;
+                part.items.forEach(item => {
+                    if (item.category === 'H' || item.inputType === 'item') {
+                        if (!itemsH[item.name]) itemsH[item.name] = { values: [] };
+                        itemsH[item.name].values.push(item.inputValue);
+                    } else {
+                        let sectionKey = 'mark';
+                        if (item.name.startsWith('底油 ')) sectionKey = 'primer';
+                        else if (item.name.startsWith('刨除 ')) sectionKey = 'remove';
+                        else if (item.name.startsWith('黑漆 ')) sectionKey = 'black';
+                        else if (item.name.startsWith('彩標 ')) sectionKey = 'color';
+                        else if (item.name.startsWith('冷塑 ')) sectionKey = 'cold';
+                        const sec = sections[sectionKey];
+                        if (!sec.groups[item.name]) sec.groups[item.name] = { items: [], type: item.inputType, typeId: item.typeId, factors: item.factors, totalArea: 0 };
+                        sec.groups[item.name].items.push(item.inputValue);
+                        sec.groups[item.name].totalArea += item.area;
+                    }
                 });
-                wrapper.innerHTML = html; leftCol.appendChild(wrapper);
-            }
+
+                const appendSectionHtml = (key) => {
+                    const sec = sections[key];
+                    const groupNames = Object.keys(sec.groups);
+                    if (groupNames.length === 0) return;
+                    const wrapper = document.createElement('div');
+                    wrapper.className = 'pdf-section mb-2';
+                    let html = `<div class="font-bold border-b border-gray-300 mb-1">${sec.label}</div>`;
+                    let sectionTotal = 0;
+                    const sectionAreas = [];
+
+                    groupNames.forEach(name => {
+                        const g = sec.groups[name];
+                        const values = g.items;
+                        const sum = values.reduce((a, b) => a + b, 0);
+                        const areaFmt = fmtNum(g.totalArea);
+                        sectionAreas.push(areaFmt);
+                        const unit = getUnitName({ type: g.type, id: g.typeId, name: name });
+                        const factorStr = fmtFactors(g.factors, {name: name, id: g.typeId});
+                        let valStr = values.length > 1 ? `(${values.map(v=>fmtNum(v)).join('+')})=${fmtNum(sum)}` : fmtNum(sum);
+                        html += `<div class="flex justify-between"><span>${name}: ${valStr}${unit} × ${factorStr}</span><span>= ${areaFmt} m²</span></div>`;
+                        sectionTotal += g.totalArea;
+                    });
+                    let totalFormula = "";
+                    if (sectionAreas.length > 1) { totalFormula = `(${sectionAreas.join('+')})=`; }
+                    html += `<div class="text-right font-bold mt-1 border-t border-dotted border-gray-400 pt-1">${sec.label}總計: ${totalFormula}${fmtNum(sectionTotal)} m²</div>`;
+                    wrapper.innerHTML = html;
+                    leftCol.appendChild(wrapper);
+                };
+                appendSectionHtml('mark'); appendSectionHtml('primer'); appendSectionHtml('remove'); appendSectionHtml('black'); appendSectionHtml('color'); appendSectionHtml('cold');
+
+                if (Object.keys(itemsH).length > 0) {
+                    const wrapper = document.createElement('div'); wrapper.className = 'pdf-section mt-2';
+                    let html = `<div class="font-bold border-b border-gray-300 mb-1">非標線施工項目</div>`;
+                    Object.keys(itemsH).forEach(name => {
+                        const values = itemsH[name].values;
+                        const sum = values.reduce((a, b) => a + b, 0);
+                        let unit = name.includes('桿') ? '支' : '個';
+                        let valStr = values.length > 1 ? `(${values.map(v=>fmtNum(v)).join('+')})` : '';
+                        html += `<div class="flex justify-between"><span>${name} ${valStr}</span><span>= ${fmtNum(sum)} ${unit}</span></div>`;
+                    });
+                    wrapper.innerHTML = html; leftCol.appendChild(wrapper);
+                }
+            });
 
             // 填充右欄
             const rightCol = document.getElementById('pdf-right-col'); rightCol.innerHTML = '';
             document.getElementById('pdf-count-badge').innerText = `共 ${historyData.length} 筆`;
             [...historyData].reverse().forEach(item => {
-                let unit = '組';
-                if (item.inputType === 'linear') unit = 'm';
-                else if (item.inputType === 'item') unit = (item.name.includes('桿')) ? '支' : '個';
-                else {
-                    if (item.name.includes('行穿線')) unit = '條';
-                    else if (item.name.includes('字') || item.typeId.includes('text')) unit = '字';
-                    else if (item.name.includes('點')) unit = '點';
-                    else if (item.name.includes('貓眼')) unit = '個';
-                    else if (item.name.includes('箭')) unit = '個';
-                }
                 const li = document.createElement('li');
-                li.innerText = `${item.name} ${fmtNum(item.inputValue)}${unit}`;
+                if (item.category === 'partition') {
+                    li.innerText = item.name;
+                    li.style.fontWeight = 'bold';
+                    li.style.marginTop = '8px';
+                    li.style.listStyle = 'none'; // 分區標題不顯示編號
+                    li.style.marginLeft = '-1em';
+                } else {
+                    let unit = '組';
+                    if (item.inputType === 'linear') unit = 'm';
+                    else if (item.inputType === 'item') unit = (item.name.includes('桿')) ? '支' : '個';
+                    else {
+                        if (item.name.includes('行穿線')) unit = '條';
+                        else if (item.name.includes('字') || item.typeId.includes('text')) unit = '字';
+                        else if (item.name.includes('點')) unit = '點';
+                        else if (item.name.includes('貓眼')) unit = '個';
+                        else if (item.name.includes('箭')) unit = '個';
+                    }
+                    li.innerText = `${item.name} ${fmtNum(item.inputValue)}${unit}`;
+                }
                 rightCol.appendChild(li);
             });
 
-            // --- 核心修改：切換視圖模式 ---
+            // --- 切換視圖模式 ---
             const template = document.getElementById('pdf-template');
-            
-            // 進入 PDF 模式 (CSS 會隱藏其他所有元素，只顯示 template)
             document.body.classList.add('pdf-mode');
-            window.scrollTo(0, 0); // 滾動到頂部確保截圖完整
-
+            window.scrollTo(0, 0); 
             showToast("正在生成 PDF...", false);
 
             const opt = {
@@ -1429,42 +1537,24 @@
                 html2canvas: { 
                     scale: 2, 
                     useCORS: true, 
-                    scrollY: 0,
-                    // Remove height constraint to allow full scroll capture
-                    // height: template.offsetHeight // REMOVED to fix blank clipping
+                    scrollY: 0, 
+                    windowWidth: document.body.scrollWidth 
+                    // REMOVED height: template.offsetHeight to fix clipping
                 }, 
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
 
-            // 延遲執行確保渲染完成
             setTimeout(() => {
-                // 改用 output('blob') 以便支援 iOS 分享或手動下載
                 html2pdf().set(opt).from(template).output('blob').then((blob) => {
-                    // 恢復正常模式
                     document.body.classList.remove('pdf-mode');
-                    
                     const file = new File([blob], opt.filename, { type: 'application/pdf' });
-                    
-                    // 嘗試使用 Web Share API (iOS/Android 推薦)
                     if (navigator.canShare && navigator.canShare({ files: [file] })) {
                         navigator.share({
                             files: [file],
-                            title: '道路標線施工日報表',
+                            title: '道路標線施工數量表',
                             text: '這是您的標線統計報表 PDF'
-                        }).then(() => {
-                            showToast("分享成功！");
-                        }).catch((err) => {
-                            console.log("Share failed or canceled", err);
-                            // 分享失敗或是取消，若是非取消錯誤則 fallback
-                            if (err.name !== 'AbortError') {
-                                forceDownload(blob, opt.filename);
-                            }
-                        });
-                    } else {
-                        // 電腦版或不支援分享的裝置 -> 直接下載
-                        forceDownload(blob, opt.filename);
-                    }
-                    
+                        }).then(() => { showToast("分享成功！"); }).catch((err) => { if (err.name !== 'AbortError') forceDownload(blob, opt.filename); });
+                    } else { forceDownload(blob, opt.filename); }
                 }).catch(err => {
                     console.error(err);
                     document.body.classList.remove('pdf-mode');
