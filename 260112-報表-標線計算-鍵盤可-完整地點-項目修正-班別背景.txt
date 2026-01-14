@@ -1573,8 +1573,12 @@
                     const sec = sections[key];
                     const groupNames = Object.keys(sec.groups);
                     if (groupNames.length === 0) return;
+                    
+                    // Create wrapper
                     const wrapper = document.createElement('div');
                     wrapper.className = 'pdf-section mb-2';
+                    
+                    // Add header
                     let html = `<div class="font-bold border-b border-gray-300 mb-1">${sec.label}</div>`;
                     let sectionTotal = 0;
                     const sectionAreas = [];
@@ -1587,16 +1591,32 @@
                         sectionAreas.push(areaFmt);
                         const unit = getUnitName({ type: g.type, id: g.typeId, name: name });
                         const factorStr = fmtFactors(g.factors, {name: name, id: g.typeId});
-                        let valStr = values.length > 1 ? `(${values.map(v=>fmtNum(v)).join('+')})=${fmtNum(sum)}` : fmtNum(sum);
-                        html += `<div class="flex justify-between items-start border-b border-dotted border-slate-200 pb-0.5 mb-1">
-                            <div class="flex-1 mr-2" style="word-break: break-all;">${name}: ${valStr}${unit} × ${factorStr}</div>
-                            <div class="whitespace-nowrap">= ${areaFmt} m²</div>
-                        </div>`;
+                        // Use <wbr> for word break opportunity after +, NO spaces
+                        let valStr = values.length > 1 ? `(${values.map(v=>fmtNum(v)).join('+<wbr>')})=${fmtNum(sum)}` : fmtNum(sum);
+                        
+                        // Use Table Layout for Item Row to prevent Overlap
+                        html += `
+                        <table style="width: 100%; border-bottom: 1px dotted #e2e8f0; margin-bottom: 4px; border-collapse: collapse;">
+                            <tr>
+                                <td style="vertical-align: top; padding-bottom: 2px; padding-right: 4px; overflow-wrap: break-word; color: #334155; font-size: 0.875rem;">
+                                     <span style="font-weight: bold; color: #0f172a;">${name}:</span> 
+                                     <span style="color: #475569;">${valStr}${unit} × ${factorStr}</span>
+                                </td>
+                                <td style="vertical-align: top; white-space: nowrap; font-weight: bold; color: #0f172a; text-align: right; font-size: 0.875rem; padding-left: 4px;">
+                                    = ${areaFmt} m²
+                                </td>
+                            </tr>
+                        </table>`;
+                        
                         sectionTotal += g.totalArea;
                     });
+                    
                     let totalFormula = "";
-                    if (sectionAreas.length > 1) { totalFormula = `(${sectionAreas.join('+')})=`; }
-                    html += `<div class="text-right font-bold mt-1 border-t border-dotted border-gray-400 pt-1">${sec.label}總計: ${totalFormula}${fmtNum(sectionTotal)} m²</div>`;
+                    if (sectionAreas.length > 1) { totalFormula = `(${sectionAreas.join('+<wbr>')})=`; }
+                    
+                    // Total Row
+                    html += `<div class="text-right font-bold mt-1 border-t border-dotted border-gray-400 pt-1 text-sm">${sec.label}總計: ${totalFormula}${fmtNum(sectionTotal)} m²</div>`;
+                    
                     wrapper.innerHTML = html;
                     leftCol.appendChild(wrapper);
                 };
@@ -1609,8 +1629,21 @@
                         const values = itemsH[name].values;
                         const sum = values.reduce((a, b) => a + b, 0);
                         let unit = name.includes('桿') ? '支' : '個';
-                        let valStr = values.length > 1 ? `(${values.map(v=>fmtNum(v)).join('+')})` : '';
-                        html += `<div class="flex justify-between"><span>${name} ${valStr}</span><span>= ${fmtNum(sum)} ${unit}</span></div>`;
+                        let valStr = values.length > 1 ? `(${values.map(v=>fmtNum(v)).join('+<wbr>')})` : '';
+                        
+                        // Use Table Layout for H items as well
+                         html += `
+                        <table style="width: 100%; border-bottom: 1px dotted #e2e8f0; margin-bottom: 4px; border-collapse: collapse;">
+                            <tr>
+                                <td style="vertical-align: top; padding-bottom: 2px; padding-right: 4px; overflow-wrap: break-word; color: #334155; font-size: 0.875rem;">
+                                     <span style="font-weight: bold; color: #0f172a;">${name}</span> 
+                                     <span style="color: #475569;">${valStr}</span>
+                                </td>
+                                <td style="vertical-align: top; white-space: nowrap; font-weight: bold; color: #0f172a; text-align: right; font-size: 0.875rem; padding-left: 4px;">
+                                    = ${fmtNum(sum)} ${unit}
+                                </td>
+                            </tr>
+                        </table>`;
                     });
                     wrapper.innerHTML = html; leftCol.appendChild(wrapper);
                 }
