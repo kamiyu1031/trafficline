@@ -900,9 +900,15 @@
             const csvContent = "\uFEFF" + [header, ...rows].join("\n");
             const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
             const url = URL.createObjectURL(blob);
+            
+            // Generate sanitized filename with timestamp
+            const now = new Date();
+            const timeStr = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}_${String(now.getHours()).padStart(2, '0')}${String(now.getMinutes()).padStart(2, '0')}`;
+            const filename = `marking_types_export_${timeStr}.csv`;
+
             const link = document.createElement("a");
             link.setAttribute("href", url);
-            link.setAttribute("download", "marking_types.csv");
+            link.setAttribute("download", filename);
             document.body.appendChild(link);
             link.click();
             document.body.removeChild(link);
@@ -1853,13 +1859,20 @@
 
             // --- 切換視圖模式 ---
             const template = document.getElementById('pdf-template');
+            
+            // 進入 PDF 模式 (CSS 會隱藏其他所有元素，只顯示 template)
             document.body.classList.add('pdf-mode');
-            window.scrollTo(0, 0); 
+            window.scrollTo(0, 0); // 滾動到頂部確保截圖完整
+
             showToast("正在生成 PDF...", false);
+
+            // Sanitize filename parts
+            const safe = (str) => (str || '未填寫').replace(/[\\/:*?"<>|]/g, '_');
+            const fileName = `${safe(formData.date)}_${safe(formData.owner)}_${safe(formData.location)}_${safe(formData.user)}.pdf`;
 
             const opt = {
                 margin: 10,
-                filename: `${formData.date}_${formData.owner}_${formData.location}_${formData.user}.pdf`,
+                filename: fileName,
                 image: { type: 'jpeg', quality: 0.98 },
                 html2canvas: { 
                     scale: 2, 
@@ -1871,22 +1884,43 @@
                 jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
             };
 
+            // 延遲執行確保渲染完成
             setTimeout(() => {
-                html2pdf().set(opt).from(template).output('blob').then((blob) => {
-                    document.body.classList.remove('pdf-mode');
-                    const file = new File([blob], opt.filename, { type: 'application/pdf' });
-                    if (navigator.canShare && navigator.canShare({ files: [file] })) {
-                        navigator.share({
-                            files: [file],
-                            title: '道路標線施工數量表',
-                            text: '這是您的標線統計報表 PDF'
-                        }).then(() => { showToast("分享成功！"); }).catch((err) => { if (err.name !== 'AbortError') forceDownload(blob, opt.filename); });
-                    } else { forceDownload(blob, opt.filename); }
-                }).catch(err => {
-                    console.error(err);
-                    document.body.classList.remove('pdf-mode');
-                    alert("PDF 生成失敗");
-                });
+                // Feature detection for Web Share API (mostly mobile)
+                const isMobileOrTablet = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || (navigator.maxTouchPoints && navigator.maxTouchPoints > 2);
+                
+                if (isMobileOrTablet && navigator.canShare) {
+                    // Mobile flow
+                     html2pdf().set(opt).from(template).output('blob').then((blob) => {
+                        document.body.classList.remove('pdf-mode');
+                        const file = new File([blob], fileName, { type: 'application/pdf' });
+                        if (navigator.canShare({ files: [file] })) {
+                            navigator.share({
+                                files: [file],
+                                title: '道路標線施工數量表',
+                                text: '這是您的標線統計報表 PDF'
+                            }).then(() => { showToast("分享成功！"); }).catch((err) => { 
+                                if (err.name !== 'AbortError') forceDownload(blob, fileName); 
+                            });
+                        } else {
+                            forceDownload(blob, fileName);
+                        }
+                    }).catch(err => {
+                        console.error(err);
+                        document.body.classList.remove('pdf-mode');
+                        alert("PDF 生成失敗");
+                    });
+                } else {
+                    // Desktop flow: Use native .save() for better compatibility on Windows
+                    html2pdf().set(opt).from(template).save().then(() => {
+                        document.body.classList.remove('pdf-mode');
+                        showToast("PDF 下載成功！");
+                    }).catch(err => {
+                        console.error(err);
+                        document.body.classList.remove('pdf-mode');
+                        alert("PDF 生成失敗");
+                    });
+                }
             }, 800);
         }
 
