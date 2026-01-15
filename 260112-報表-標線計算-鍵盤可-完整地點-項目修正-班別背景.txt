@@ -1363,33 +1363,81 @@
             reader.readAsText(file);
         }
 
+        // 格式化日期為 YYMMDD (如果日期存在)
+        function getFormattedDateShift() {
+            if (!formData.date) return (formData.shift || "");
+            // YYYY-MM-DD -> YYMMDD
+            const y = formData.date.substring(2, 4);
+            const m = formData.date.substring(5, 7);
+            const d = formData.date.substring(8, 10);
+            return `${y}${m}${d}${formData.shift || ""}`;
+        }
+
+        // 格式化時間為 AM/PM HH:MM
+        function formatTimeAMPM(timestamp) {
+            const date = new Date(timestamp);
+            let hours = date.getHours();
+            let minutes = date.getMinutes();
+            const ampm = hours >= 12 ? 'PM' : 'AM';
+            hours = hours % 12;
+            hours = hours ? hours : 12; // the hour '0' should be '12'
+            minutes = minutes < 10 ? '0'+minutes : minutes;
+            return `${ampm}${hours}:${minutes}`; 
+        }
+
+        // 修改：逐條輸出增加更多資訊 (Excel 友善格式 - TSV)
         function copyLineItems() {
             if (historyData.length === 0) { alert('請先輸入統計資料'); return; }
             playVictory();
-            const lines = [...historyData].reverse().map(item => {
-                if (item.category === 'partition') return item.name; // 直接輸出分區名稱
-                let unit = '組';
-                if (item.inputType === 'linear') unit = 'm';
-                else if (item.inputType === 'item') unit = (item.name.includes('桿')) ? '支' : '個'; 
-                else {
-                    if (item.name.includes('行穿線')) unit = '條';
-                    else if (item.name.includes('字') || item.typeId.includes('text')) unit = '字';
-                    else if (item.name.includes('點')) unit = '點';
-                    else if (item.name.includes('條')) unit = '條';
-                    else if (item.name.includes('支')) unit = '支';
-                    else if (item.name.includes('貓眼')) unit = '個';
-                    else if (item.name.includes('桿')) unit = '支';
-                    else unit = '組'; 
-                    if (unit === '組' && (item.name.includes('箭') || item.name.includes('符號'))) unit = '個';
+            
+            // 處理分區邏輯
+            let currentPartition = "全面"; 
+
+            const chronologicalData = [...historyData].reverse();
+            // 加入標題列 (Excel 貼上時會自動分欄)
+            const exportLines = ["項目名稱\t數量\t單位\t係數\t面積(m²)\t分區\t人員\t日期班別\t業主\t地點\t車輛\t輸入時間"];
+
+            chronologicalData.forEach(item => {
+                if (item.category === 'partition') {
+                    const match = item.name.match(/^\((.+)\)\.$/);
+                    currentPartition = match ? match[1] : item.name;
+                } else {
+                    let unit = '組';
+                    if (item.inputType === 'linear') {
+                        unit = 'm';
+                    } else if (item.inputType === 'item') {
+                         if (item.name.includes('桿')) unit = '支';
+                         else unit = '個'; // 涵蓋貓眼
+                    } else {
+                        if (item.name.includes('行穿線')) unit = '條';
+                        else if (item.name.includes('字') || item.typeId.includes('text')) unit = '字';
+                        else if (item.name.includes('點')) unit = '點';
+                        else if (item.name.includes('條')) unit = '條';
+                        else if (item.name.includes('支')) unit = '支';
+                        else if (item.name.includes('貓眼')) unit = '個';
+                        else if (item.name.includes('箭')) unit = '個';
+                    }
+
+                    const factorStr = fmtFactors(item.factors, {name: item.name, id: item.typeId, type: item.inputType}) || "1";
+                    
+                    // 使用 Tab (\t) 分隔，Excel 可直接貼上成分欄
+                    const line = `${item.name}\t${fmtNum(item.inputValue)}\t${unit}\t${factorStr}\t${fmtNum(item.area)}\t${currentPartition}\t${formData.user||''}\t${getFormattedDateShift()}\t${formData.owner||''}\t${formData.location||''}\t${formData.car||''}\t${formatTimeAMPM(item.id)}`;
+                    
+                    exportLines.push(line);
                 }
-                return `${item.name}${fmtNum(item.inputValue)}${unit}`;
             });
-            const text = lines.join('\n');
+
+            const text = exportLines.join('\n');
             const textarea = document.createElement("textarea");
             textarea.value = text;
             document.body.appendChild(textarea);
             textarea.select();
-            try { document.execCommand('copy'); showToast("逐條複製成功！"); } catch (err) { alert('複製失敗'); }
+            try { 
+                document.execCommand('copy'); 
+                showToast("已複製 Excel 格式！"); 
+            } catch (err) { 
+                alert('複製失敗'); 
+            }
             document.body.removeChild(textarea);
         }
 
